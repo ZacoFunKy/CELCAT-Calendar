@@ -1,14 +1,17 @@
 'use client'
 import { useState, useEffect, useRef } from 'react';
 
-// --- ICÔNES SIMPLIFIÉES ---
-const IconSearch = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>;
-const IconCopy = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>;
-const IconCheck = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>;
-const IconX = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>;
+// --- ICÔNES ---
+const IconSearch = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
+const IconCopy = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>;
+const IconCheck = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>;
+const IconX = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>;
+const IconTrash = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
+const IconGoogle = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 2C18.3 2 23 6.7 23 12.5S18.3 23 12.5 23 2 18.3 2 12.5 6.7 2 12.5 2zm4.5 11h-3.5v3.5a1 1 0 01-2 0V13h-3.5a1 1 0 010-2H11.5V7.5a1 1 0 012 0V11h3.5a1 1 0 010 2z"/></svg>;
+const IconCalendar = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>;
+const IconSparkles = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-400"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>;
 
 export default function Home() {
-  // --- ÉTATS (LOGIQUE) ---
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -18,21 +21,19 @@ export default function Home() {
   const [origin, setOrigin] = useState('');
   const suggestionsRef = useRef(null);
 
+  // 1. CHARGEMENT INITIAL (LocalStorage)
   useEffect(() => {
     setOrigin(window.location.origin);
-
-    // On récupère la sauvegarde
+    
     const savedGroups = localStorage.getItem('my_celcat_groups');
     if (savedGroups) {
       try {
-        // On remet les groupes dans l'état
         setSelectedGroups(JSON.parse(savedGroups));
       } catch (e) {
         console.error("Erreur chargement sauvegarde", e);
       }
     }
 
-    // Gestion du clic en dehors de la liste de recherche
     function handleClickOutside(event) {
       if (suggestionsRef.current && !suggestionsRef.current.contains(event.target)) {
         setSuggestions([]);
@@ -42,14 +43,12 @@ export default function Home() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // 2. SAUVEGARDE AUTOMATIQUE
   useEffect(() => {
-    if (selectedGroups.length > 0) {
-      // On enregistre la liste en texte dans le navigateur
-      localStorage.setItem('my_celcat_groups', JSON.stringify(selectedGroups));
-    }
+    localStorage.setItem('my_celcat_groups', JSON.stringify(selectedGroups));
   }, [selectedGroups]);
 
-  // Appel API de recherche (Debounce)
+  // Appel API de recherche
   useEffect(() => {
     const fetchGroups = async () => {
       if (query.length < 3) {
@@ -67,12 +66,10 @@ export default function Home() {
         setLoading(false);
       }
     };
-
     const timeoutId = setTimeout(fetchGroups, 300);
     return () => clearTimeout(timeoutId);
   }, [query]);
 
-  // --- ACTIONS ---
   const addGroup = (groupText) => {
     if (!selectedGroups.includes(groupText)) {
       setSelectedGroups([...selectedGroups, groupText]);
@@ -83,13 +80,20 @@ export default function Home() {
   };
 
   const removeGroup = (groupToRemove) => {
-    setSelectedGroups(selectedGroups.filter(g => g !== groupToRemove));
+    const newGroups = selectedGroups.filter(g => g !== groupToRemove);
+    setSelectedGroups(newGroups);
+    setGeneratedLink('');
+  };
+
+  const clearAll = () => {
+    setSelectedGroups([]);
     setGeneratedLink('');
   };
 
   const generateLink = () => {
     if (selectedGroups.length === 0) return;
     const groupsString = selectedGroups.join(',');
+    // PROD : Pas de timestamp pour permettre le cache Google
     const link = `${origin}/api/calendar.ics?group=${encodeURIComponent(groupsString)}`;
     setGeneratedLink(link);
     setIsCopied(false);
@@ -98,82 +102,103 @@ export default function Home() {
   const copyToClipboard = () => {
     navigator.clipboard.writeText(generatedLink);
     setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 3000);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const getWebcalLink = () => {
+    if (!generatedLink) return '';
+    return generatedLink.replace(/^https?:\/\//, 'webcal://');
+  };
+
+  const getGoogleLink = () => {
+    if (!generatedLink) return '';
+    // Astuce : Google préfère parfois http pour l'import CID
+    const cleanLink = generatedLink.replace('https://', 'http://');
+    return `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(cleanLink)}`;
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f7f9] font-sans text-slate-800 flex flex-col">
-
-      {/* --- HEADER ÉPURÉ & OFFICIEL --- */}
-      <header className="bg-[#005b8d] text-white py-4 shadow-md">
-        <div className="container mx-auto px-4 flex justify-center md:justify-start items-center gap-4">
-          {/* Logo Textuel */}
-          <div className="flex flex-col leading-tight font-bold tracking-tight select-none">
-            <span className="text-xl">université</span>
-            <span className="text-sm opacity-90">de BORDEAUX</span>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/50 font-sans text-slate-800 flex flex-col">
+      
+      {/* --- HEADER MODERNE --- */}
+      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50">
+        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            {/* Logo simulé */}
+            <div className="w-10 h-10 bg-[#005b8d] rounded-lg flex items-center justify-center text-white shadow-lg shadow-blue-900/20">
+              <IconCalendar />
+            </div>
+            <div className="flex flex-col leading-tight">
+               <span className="text-lg font-bold text-slate-800 tracking-tight">U-Bordeaux</span>
+               <span className="text-xs font-medium text-[#005b8d] uppercase tracking-wider">Calendrier Sync</span>
+            </div>
           </div>
-          {/* Séparateur discret */}
-          <div className="hidden md:block h-8 w-px bg-white/20 mx-2"></div>
-          <h1 className="hidden md:block text-blue-100 font-medium tracking-wide text-sm uppercase">
-            Exportateur Calendrier
-          </h1>
+          <a href="https://celcat.u-bordeaux.fr" target="_blank" className="text-xs font-medium text-slate-400 hover:text-[#005b8d] transition">
+            Source Celcat →
+          </a>
         </div>
       </header>
 
-      {/* --- CONTENU CENTRÉ --- */}
-      <main className="flex-grow flex flex-col items-center justify-start pt-10 px-4 pb-10">
-
-        <div className="w-full max-w-2xl">
-
-          {/* TITRE SIMPLE */}
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-[#005b8d] mb-2">
-              Synchronise ton emploi du temps
-            </h2>
-            <p className="text-slate-500 text-sm md:text-base">
-              Récupère tes cours Celcat directement sur ton téléphone ou ordinateur.
+      {/* --- CONTENU PRINCIPAL --- */}
+      <main className="flex-grow flex flex-col items-center justify-center px-4 py-12">
+        
+        <div className="w-full max-w-2xl animate-fade-in-up">
+          
+          {/* TITRE HERO */}
+          <div className="text-center mb-10">
+            <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 mb-4 tracking-tight">
+              Ton emploi du temps, <br/>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#005b8d] to-blue-500">
+                enfin synchronisé.
+              </span>
+            </h1>
+            <p className="text-lg text-slate-500 max-w-lg mx-auto leading-relaxed">
+              Recherche tes cours, génère ton lien et ajoute-le directement à ton calendrier. Gratuit et automatique.
             </p>
           </div>
 
           {/* CARTE PRINCIPALE */}
-          <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-visible">
-            <div className="p-6 md:p-8 space-y-6">
+          <div className="bg-white rounded-2xl shadow-xl shadow-blue-900/5 border border-slate-100 overflow-visible transition-all duration-300 hover:shadow-2xl hover:shadow-blue-900/10">
+            <div className="p-6 md:p-8 space-y-8">
 
-              {/* 1. INPUT RECHERCHE */}
+              {/* ÉTAPE 1 : RECHERCHE */}
               <div className="relative" ref={suggestionsRef}>
-                <label className="block text-sm font-bold text-slate-700 mb-2">
-                  Recherche tes groupes
+                <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">
+                  1. Ajoute tes matières
                 </label>
-
-                <div className="relative flex items-center">
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    {loading ? (
+                      <div className="w-5 h-5 border-2 border-slate-200 border-t-[#005b8d] rounded-full animate-spin"></div>
+                    ) : (
+                      <div className="text-slate-400 group-focus-within:text-[#005b8d] transition-colors">
+                        <IconSearch />
+                      </div>
+                    )}
+                  </div>
                   <input
                     type="text"
-                    className="w-full p-4 pl-11 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#005b8d] focus:border-[#005b8d] outline-none transition text-base"
-                    placeholder="Ex: Info de Gestion..."
+                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-xl text-slate-800 placeholder-slate-400 focus:bg-white focus:border-[#005b8d] focus:ring-4 focus:ring-blue-50 outline-none transition-all duration-200 text-base font-medium"
+                    placeholder="Ex: Info de Gestion, Miage, M2 informatique..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                   />
-                  <div className="absolute left-4 text-slate-400 pointer-events-none">
-                    {loading ? (
-                      <div className="w-5 h-5 border-2 border-slate-300 border-t-[#005b8d] rounded-full animate-spin"></div>
-                    ) : (
-                      <IconSearch />
-                    )}
-                  </div>
                 </div>
 
-                {/* LISTE DEROULANTE */}
+                {/* LISTE DÉROULANTE */}
                 {suggestions.length > 0 && (
-                  <div className="absolute z-20 w-full bg-white mt-2 border border-slate-200 rounded-lg shadow-xl max-h-64 overflow-y-auto">
-                    <ul>
+                  <div className="absolute z-20 w-full bg-white mt-2 border border-slate-100 rounded-xl shadow-2xl max-h-64 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+                    <ul className="py-2">
                       {suggestions.map((item) => (
-                        <li
+                        <li 
                           key={item.id}
                           onClick={() => addGroup(item.text)}
-                          className="px-4 py-3 hover:bg-blue-50 cursor-pointer text-sm border-b border-slate-50 last:border-0 text-slate-700 transition-colors flex items-center justify-between group"
+                          className="px-5 py-3 hover:bg-blue-50 cursor-pointer text-sm text-slate-700 transition-colors flex items-center justify-between group"
                         >
-                          <span>{item.text}</span>
-                          <span className="text-[#005b8d] opacity-0 group-hover:opacity-100 text-xs font-bold">+ Ajouter</span>
+                          <span className="font-medium">{item.text}</span>
+                          <span className="text-[#005b8d] opacity-0 group-hover:opacity-100 text-xs font-bold bg-blue-100 px-2 py-1 rounded-md transition-all transform translate-x-2 group-hover:translate-x-0">
+                            + Ajouter
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -181,83 +206,132 @@ export default function Home() {
                 )}
               </div>
 
-              {/* 2. LISTE DES GROUPES SÉLECTIONNÉS */}
-              <div className="min-h-[30px]">
-                {selectedGroups.length === 0 ? (
-                  <p className="text-sm text-slate-400 italic">Aucun groupe sélectionné pour le moment.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedGroups.map((g) => (
-                      <span key={g} className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-[#f0f7fc] text-[#005b8d] border border-blue-100">
-                        {g}
-                        <button onClick={() => removeGroup(g)} className="ml-2 text-blue-400 hover:text-red-500 transition focus:outline-none">
-                          <IconX />
+              {/* LISTE DES GROUPES SÉLECTIONNÉS */}
+              <div className="min-h-[40px]">
+                 {selectedGroups.length === 0 ? (
+                    <div className="flex items-center justify-center h-full py-4 border-2 border-dashed border-slate-100 rounded-xl bg-slate-50/50">
+                        <p className="text-sm text-slate-400 font-medium">Aucun groupe sélectionné</p>
+                    </div>
+                 ) : (
+                    <div className="space-y-3 animate-in fade-in duration-300">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Ta sélection ({selectedGroups.length})</p>
+                        <button onClick={clearAll} className="text-xs font-medium text-red-400 hover:text-red-600 flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-red-50">
+                          <IconTrash /> Tout effacer
                         </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedGroups.map((g) => (
+                          <span key={g} className="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-[#005b8d] border border-blue-100 group hover:border-blue-200 transition-colors">
+                            {g}
+                            <button onClick={() => removeGroup(g)} className="ml-2 text-blue-300 hover:text-red-500 transition focus:outline-none p-0.5 rounded-full hover:bg-red-50">
+                              <IconX />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                 )}
               </div>
 
-              {/* 3. BOUTON ACTION */}
-              <button
-                onClick={generateLink}
-                disabled={selectedGroups.length === 0}
-                className={`w-full py-4 rounded-lg font-bold text-white text-lg transition shadow-sm flex items-center justify-center gap-2
-                  ${selectedGroups.length > 0
-                    ? 'bg-[#005b8d] hover:bg-[#004a73] hover:shadow-md transform active:scale-[0.99]'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'}
-                `}
-              >
-                Générer mon lien
-              </button>
+              {/* BOUTON GÉNÉRER */}
+              <div className="pt-2">
+                <button
+                  onClick={generateLink}
+                  disabled={selectedGroups.length === 0}
+                  className={`w-full py-4 rounded-xl font-bold text-white text-lg shadow-lg flex items-center justify-center gap-3 transition-all duration-300
+                    ${selectedGroups.length > 0 
+                      ? 'bg-gradient-to-r from-[#005b8d] to-blue-600 hover:shadow-blue-900/25 hover:scale-[1.02] active:scale-[0.98]' 
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}
+                  `}
+                >
+                  <span>Générer mon lien</span>
+                  {selectedGroups.length > 0 && <span className="bg-white/20 px-2 py-0.5 rounded text-sm">Gratuit</span>}
+                </button>
+              </div>
 
-              {/* 4. RÉSULTAT */}
+              {/* ZONE DE RÉSULTAT (Ticket) */}
               {generatedLink && (
-                <div className="mt-6 pt-6 border-t border-slate-100 animate-fade-in">
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <div className="flex items-center gap-2 text-green-800 font-bold mb-3">
-                      <IconCheck />
-                      <span>Lien prêt à l'emploi !</span>
-                    </div>
+                <div className="mt-8 pt-8 border-t border-dashed border-slate-200 animate-in slide-in-from-bottom-4 duration-500">
+                  
+                  <div className="bg-[#f0fdf4] border border-green-200 rounded-xl p-1 overflow-hidden shadow-sm">
+                     <div className="bg-white/60 p-4 rounded-lg">
+                        <div className="flex items-center gap-2 text-green-700 font-bold mb-4">
+                          <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+                             <IconCheck />
+                          </div>
+                          <span>Lien prêt à l'emploi !</span>
+                        </div>
+                        
+                        <div className="flex gap-2 mb-4">
+                          <input 
+                            readOnly 
+                            value={generatedLink}
+                            className="flex-grow bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 font-mono outline-none focus:border-green-500 transition-colors select-all"
+                            onClick={(e) => e.target.select()}
+                          />
+                          <button
+                            onClick={copyToClipboard}
+                            className={`px-4 py-2 rounded-lg font-bold border transition-all flex items-center gap-2 text-sm whitespace-nowrap shadow-sm
+                              ${isCopied 
+                                ? 'bg-green-600 border-green-600 text-white' 
+                                : 'bg-white border-slate-200 text-slate-700 hover:border-[#005b8d] hover:text-[#005b8d]'}
+                            `}
+                          >
+                            {isCopied ? 'Copié !' : 'Copier'}
+                            {!isCopied && <IconCopy />}
+                          </button>
+                        </div>
 
-                    <div className="flex gap-2">
-                      <input
-                        readOnly
-                        value={generatedLink}
-                        className="flex-grow bg-white border border-green-200 rounded px-3 text-sm text-slate-600 outline-none select-all"
-                        onClick={(e) => e.target.select()}
-                      />
-                      <button
-                        onClick={copyToClipboard}
-                        className={`px-4 py-2 rounded font-semibold border transition flex items-center gap-2 text-sm whitespace-nowrap
-                          ${isCopied
-                            ? 'bg-green-600 border-green-600 text-white'
-                            : 'bg-white border-slate-300 text-slate-700 hover:border-[#005b8d] hover:text-[#005b8d]'}
-                        `}
-                      >
-                        {isCopied ? 'Copié !' : 'Copier'}
-                        {!isCopied && <IconCopy />}
-                      </button>
-                    </div>
-
-                    <p className="text-xs text-green-700 mt-3">
-                      ℹ️ Colle ce lien dans Google Agenda (Ajouter &gt; À partir de l'URL).
-                    </p>
+                        {/* ACTIONS RAPIDES */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <a
+                            href={getGoogleLink()}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-2 px-4 py-3 bg-[#4285F4] hover:bg-[#3367d6] text-white rounded-lg font-semibold transition-all shadow-sm hover:shadow hover:-translate-y-0.5"
+                          >
+                            <IconGoogle /> Ajouter à Google
+                          </a>
+                          <a
+                            href={getWebcalLink()}
+                            className="flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-slate-100 hover:border-blue-200 text-slate-700 hover:text-[#005b8d] rounded-lg font-semibold transition-all shadow-sm hover:shadow hover:-translate-y-0.5"
+                          >
+                            <div className="text-[#005b8d]"><IconCalendar /></div>
+                            Outlook / Apple
+                          </a>
+                        </div>
+                     </div>
                   </div>
+
+                  <p className="text-xs text-center text-slate-400 mt-4 font-medium">
+                    🔒 Vos données restent privées. Le lien est généré localement.
+                  </p>
+
                 </div>
               )}
 
             </div>
           </div>
-
-          {/* FOOTER DISCRET */}
-          <p className="text-center text-slate-400 text-xs mt-8">
-            Outil non-officiel • Données Celcat U-Bordeaux • Serveur sécurisé
+          
+          {/* FOOTER SIMPLE */}
+          <p className="text-center text-slate-400 text-xs mt-12 mb-6">
+            © {new Date().getFullYear()} • Fait avec ❤️ par un étudiant pour les étudiants.
           </p>
 
         </div>
       </main>
+      
+      {/* STYLE POUR ANIMATIONS PERSONNALISÉES */}
+      <style jsx global>{`
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up {
+          animation: fadeInUp 0.6s ease-out forwards;
+        }
+      `}</style>
     </div>
   );
 }
