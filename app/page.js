@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 
 // ==========================================
-// 0. ICÔNES (Toutes les icônes nécessaires...)
+// 0. ICÔNES
 // ==========================================
 const IconSearch = ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>;
 const IconX = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>;
@@ -17,8 +17,6 @@ const IconTrash = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="no
 // ==========================================
 // 1. LOGIQUE PARTAGÉE (HOOKS)
 // ==========================================
-
-// Gère le thème clair/sombre et sa persistance
 const useAppTheme = () => {
     const [theme, setTheme] = useState('system');
     const [mounted, setMounted] = useState(false);
@@ -43,7 +41,6 @@ const useAppTheme = () => {
     return { theme, toggleTheme, mounted };
 };
 
-// Gère la logique (recherche, lien, groupes)
 function useCalendarLogic() {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -96,7 +93,7 @@ function useCalendarLogic() {
 }
 
 // ==========================================
-// 2. COMPOSANT MOBILE (Vue Épurée)
+// 2. COMPOSANT MOBILE (Vue Glassmorphism Mobile)
 // ==========================================
 const MobileView = ({ theme, toggleTheme, contentVisible }) => {
   const logic = useCalendarLogic();
@@ -108,137 +105,152 @@ const MobileView = ({ theme, toggleTheme, contentVisible }) => {
   }
 
   return (
-    <div className={`flex flex-col min-h-screen transition-opacity duration-1000 ease-out delay-100 ${contentVisible ? 'opacity-100' : 'opacity-0'}`}>
-        <main className="flex-grow flex flex-col items-center justify-start px-4 pt-20 pb-12 bg-slate-50 dark:bg-[#0B1120] min-h-screen transition-colors duration-500">
-            
-            {/* HEADER MOBILE (pour le toggle) */}
-            <header className="fixed top-0 left-0 right-0 z-50 flex justify-end p-4 pointer-events-none">
-              <button onClick={toggleTheme} className="p-2 rounded-full bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-700 shadow-md pointer-events-auto">
-                  {theme === 'dark' ? <IconSun /> : <IconMoon />}
-              </button>
-            </header>
+    <div className={`relative min-h-screen bg-slate-50 dark:bg-[#0B1120] font-sans text-slate-900 dark:text-white overflow-x-hidden selection:bg-[#005b8d]/30 transition-colors duration-500`}>
+        
+        {/* BACKGROUND PC/MOBILE (Blobs) */}
+        <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+            <div className="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-60"></div>
+            <div className="absolute top-[-20%] left-[-10%] w-[70vw] h-[70vw] bg-[#005b8d]/20 dark:bg-[#005b8d]/20 rounded-full blur-[100px] animate-blob mix-blend-multiply dark:mix-blend-screen"></div>
+            <div className="absolute top-[10%] right-[-20%] w-[60vw] h-[60vw] bg-cyan-200/40 dark:bg-cyan-900/20 rounded-full blur-[100px] animate-blob animation-delay-2000 mix-blend-multiply dark:mix-blend-screen"></div>
+            <div className="absolute bottom-[-20%] left-[20%] w-[60vw] h-[60vw] bg-blue-200/40 dark:bg-indigo-900/20 rounded-full blur-[100px] animate-blob animation-delay-4000 mix-blend-multiply dark:mix-blend-screen"></div>
+        </div>
+        
+        <div className={`flex flex-col min-h-screen transition-opacity duration-1000 ease-out delay-100 ${contentVisible ? 'opacity-100' : 'opacity-0'}`}>
+            <main className="flex-grow flex flex-col items-center justify-start px-4 pt-20 pb-12 w-full">
+                
+                {/* HEADER MOBILE (pour le toggle) */}
+                <header className="fixed top-0 left-0 right-0 z-50 flex justify-end p-4 pointer-events-none">
+                  <button onClick={toggleTheme} className="p-2 rounded-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-700 shadow-md pointer-events-auto">
+                      {theme === 'dark' ? <IconSun /> : <IconMoon />}
+                  </button>
+                </header>
 
-            <div className="w-full max-w-2xl animate-fade-in-up">
-              {/* EN-TÊTE STANDARDISÉ */}
-              <div className="text-center mb-10">
-                <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 dark:text-white mb-4 tracking-tight leading-[0.95]">
-                  Sync<br/>
-                  <span className="text-[#005b8d] dark:text-white">Ton Agenda.</span>
-                </h1>
-                <p className="text-lg text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">
-                  L'emploi du temps de l'université, propre, rapide et directement dans ta poche.
-                </p>
-              </div>
+                <div className="w-full max-w-2xl animate-fade-in-up">
+                  {/* EN-TÊTE STANDARDISÉ */}
+                  <div className="text-center mb-10">
+                    <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 dark:text-white mb-4 tracking-tight leading-[0.95]">
+                      Sync<br/>
+                      <span className="text-[#005b8d] dark:text-white">Ton Agenda.</span>
+                    </h1>
+                    <p className="text-lg text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">
+                      L'emploi du temps de l'université, propre, rapide et directement dans ta poche.
+                    </p>
+                  </div>
 
-              {/* CARTE PRINCIPALE */}
-              <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-visible transition-all duration-300">
-                <div className="p-6 md:p-8 space-y-8">
-                  
-                  {/* RECHERCHE */}
-                  <div className="relative">
-                    <label htmlFor="group-search" className="block text-sm font-bold text-slate-700 dark:text-slate-400 mb-2 ml-1">1. Ajoute tes matières</label>
-                    <div className="relative group">
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <div className="text-slate-400 dark:text-slate-600 group-focus-within:text-[#005b8d] transition-colors">
-                          <IconSearch className="w-5 h-5" />
+                  {/* CARTE PRINCIPALE (STYLE PC) */}
+                  <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl rounded-3xl shadow-[0_20px_40px_-12px_rgba(0,0,0,0.1)] dark:shadow-black/50 border border-white/60 dark:border-white/10 p-2 ring-1 ring-black/5 dark:ring-white/5 transition-all duration-300">
+                    <div className="bg-white/50 dark:bg-slate-800/50 rounded-2xl p-6 space-y-6 border border-white/50 dark:border-white/5">
+                      
+                      {/* RECHERCHE */}
+                      <div className="relative">
+                        <label htmlFor="group-search" className="block text-sm font-bold text-slate-700 dark:text-slate-400 mb-2 ml-1">1. Ajoute tes matières</label>
+                        <div className="relative group">
+                          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <div className="text-slate-400 dark:text-slate-600 group-focus-within:text-[#005b8d] transition-colors">
+                              <IconSearch className="w-5 h-5" />
+                            </div>
+                          </div>
+                          {/* Input style PC */}
+                          <input
+                            id="group-search"
+                            type="text"
+                            autoComplete="off"
+                            placeholder="Ex: Info de Gestion, MIAGE, M2..."
+                            className="block w-full pl-12 pr-4 py-3.5 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-[#005b8d]/20 dark:focus:ring-white/10 focus:border-[#005b8d] dark:focus:border-white/30 outline-none transition-all shadow-sm hover:border-slate-300 dark:hover:border-slate-600 text-base font-medium"
+                            value={logic.query}
+                            onChange={(e) => logic.setQuery(e.target.value)}
+                          />
+                          {/* Suggestions Mobile (Simplifié) */}
+                          {logic.suggestions.length > 0 && (
+                            <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl shadow-xl max-h-60 overflow-y-auto z-50">
+                              <ul>
+                                {logic.suggestions.map((item, i) => (
+                                  <li key={item.id || i} onClick={() => logic.addGroup(item.text)} className="px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer text-slate-700 dark:text-slate-300 border-b border-slate-50 dark:border-slate-700 last:border-0">
+                                    {item.text}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <input
-                        id="group-search"
-                        type="text"
-                        autoComplete="off"
-                        placeholder="Ex: Info de Gestion, MIAGE, M2..."
-                        className="w-full pl-12 pr-4 py-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-600 focus:bg-white dark:focus:bg-slate-900 focus:border-[#005b8d] focus:ring-4 focus:ring-blue-50 dark:focus:ring-[#005b8d]/20 outline-none transition-all duration-200 text-base font-medium"
-                        value={logic.query}
-                        onChange={(e) => logic.setQuery(e.target.value)}
-                      />
-                      {/* Suggestions Mobile (Simplifié, sans gestion activeIndex pour ce modèle) */}
-                      {logic.suggestions.length > 0 && (
-                        <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl shadow-xl max-h-60 overflow-y-auto z-50">
-                          <ul>
-                            {logic.suggestions.map((item, i) => (
-                              <li key={item.id || i} onClick={() => logic.addGroup(item.text)} className="px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer text-slate-700 dark:text-slate-300 border-b border-slate-50 dark:border-slate-700 last:border-0">
-                                {item.text}
+
+                      {/* TAGS SELECTIONNÉS */}
+                      <div className="min-h-[40px]">
+                      {logic.selectedGroups.length > 0 && (
+                        <div className="space-y-3 animate-in fade-in duration-300">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Ta sélection ({logic.selectedGroups.length})</p>
+                            <button onClick={logic.clearAll} className="text-xs font-medium text-red-400 hover:text-red-600 dark:text-red-300 dark:hover:text-red-500 flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20">
+                              <IconTrash /> Tout effacer
+                            </button>
+                          </div>
+                          <ul className="flex flex-wrap gap-2">
+                            {logic.selectedGroups.map(g => (
+                              <li key={g} className="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium bg-[#005b8d]/5 dark:bg-[#005b8d]/20 text-[#005b8d] dark:text-blue-100 border border-[#005b8d]/10 dark:border-[#005b8d]/30 group hover:border-[#005b8d]/30 transition-colors">
+                                {g}
+                                <button onClick={() => logic.removeGroup(g)} className="ml-2 text-blue-300 dark:text-blue-100/50 hover:text-red-500 transition p-0.5 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20">
+                                  <IconX />
+                                </button>
                               </li>
                             ))}
                           </ul>
                         </div>
                       )}
-                    </div>
-                  </div>
+                      </div>
 
-                  {/* TAGS SELECTIONNÉS */}
-                  <div className="min-h-[40px]">
-                  {logic.selectedGroups.length > 0 && (
-                    <div className="space-y-3 animate-in fade-in duration-300">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Ta sélection ({logic.selectedGroups.length})</p>
-                        <button onClick={logic.clearAll} className="text-xs font-medium text-red-400 hover:text-red-600 dark:text-red-300 dark:hover:text-red-500 flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20">
-                           <IconTrash /> Tout effacer
+                      {/* TOGGLE VACANCES */}
+                      <label className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer transition-colors hover:border-[#005b8d]/30 dark:hover:border-slate-500 group">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 group-hover:text-[#005b8d] dark:group-hover:text-white transition-colors">
+                              <IconVacation />
+                          </div>
+                          <div className="flex flex-col">
+                              <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Inclure les vacances</span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Affiche les congés</span>
+                          </div>
+                        </div>
+                        <div className="relative">
+                          <input type="checkbox" className="sr-only peer" checked={logic.showHolidays} onChange={(e) => {logic.setShowHolidays(e.target.checked); logic.setGeneratedLink('')}} />
+                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#005b8d]"></div>
+                        </div>
+                      </label>
+
+
+                      {/* BOUTON GENERER */}
+                      <div className="pt-2">
+                        <button onClick={handleGenerate} disabled={logic.selectedGroups.length === 0}
+                          className={`group w-full py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-3 transition-all duration-300 transform active:scale-[0.98]
+                          ${logic.selectedGroups.length === 0 
+                            ? 'opacity-50 cursor-not-allowed bg-slate-400 dark:bg-slate-700 text-slate-700 dark:text-slate-300' 
+                            : 'bg-[#005b8d] hover:bg-[#004a75] text-white shadow-[#005b8d]/20 hover:shadow-[#005b8d]/40'}
+                        `}>
+                          <span>Générer mon lien</span>
+                          {logic.selectedGroups.length > 0 && <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>}
                         </button>
                       </div>
-                      <ul className="flex flex-wrap gap-2">
-                        {logic.selectedGroups.map(g => (
-                          <li key={g} className="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 dark:bg-[#005b8d]/30 text-[#005b8d] dark:text-blue-100 border border-blue-100 dark:border-[#005b8d]/50 group hover:border-blue-200 transition-colors">
-                            {g}
-                            <button onClick={() => logic.removeGroup(g)} className="ml-2 text-blue-300 dark:text-blue-100/50 hover:text-red-500 transition p-0.5 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20">
-                              <IconX />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
                     </div>
+                  </div>
+
+                  {/* RESULTATS (Style Mobile adapté au glassmorphism) */}
+                  {logic.generatedLink && (
+                      <div ref={resultRef} className="mt-8 bg-white dark:bg-slate-800 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-700 p-6 animate-in fade-in slide-in-from-bottom-4">
+                          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2"><span className="text-emerald-500">●</span> Calendrier prêt</h3>
+                          <div className="flex gap-2 mb-4">
+                              <input readOnly value={logic.generatedLink} className="flex-grow bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-600 dark:text-slate-300 font-mono" />
+                              <button onClick={logic.copyToClipboard} className="bg-[#005b8d] text-white px-4 rounded-lg font-bold text-sm">{logic.isCopied ? 'Copié!' : 'Copier'}</button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                              <a href={logic.generatedLink.replace(/^https?:\/\//, 'webcal://')} className="block text-center py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-sm hover:bg-slate-200 transition">Apple / Outlook</a>
+                              <a href={`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(logic.generatedLink.replace('https://', 'http://'))}`} target="_blank" className="block text-center py-3 bg-[#4285F4] hover:bg-[#3367d6] text-white font-bold rounded-xl text-sm transition">Google</a>
+                          </div>
+                      </div>
                   )}
-                  </div>
 
-                  {/* TOGGLE VACANCES */}
-                  <label className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer transition-colors hover:border-[#005b8d]/30 dark:hover:border-slate-500 group">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 group-hover:text-[#005b8d] dark:group-hover:text-white transition-colors">
-                          <IconVacation />
-                      </div>
-                      <div className="flex flex-col">
-                          <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Inclure les vacances</span>
-                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Affiche les congés</span>
-                      </div>
-                    </div>
-                    <div className="relative">
-                      <input type="checkbox" className="sr-only peer" checked={logic.showHolidays} onChange={(e) => {logic.setShowHolidays(e.target.checked); logic.setGeneratedLink('')}} />
-                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#005b8d]"></div>
-                    </div>
-                  </label>
-
-
-                  {/* BOUTON GENERER */}
-                  <div className="pt-2">
-                    <button onClick={handleGenerate} disabled={logic.selectedGroups.length === 0}
-                      className={`w-full py-4 rounded-xl font-bold text-white text-lg shadow-lg flex items-center justify-center gap-3 transition-all duration-300 
-                      ${logic.selectedGroups.length === 0 ? 'opacity-50 cursor-not-allowed bg-slate-400 dark:bg-slate-700' : 'bg-gradient-to-r from-[#005b8d] to-blue-600 hover:shadow-blue-900/25 hover:scale-[1.02] active:scale-[0.98]'}
-                    `}>
-                      <span>Générer mon lien</span>
-                    </button>
-                  </div>
+                  <p className="text-center text-slate-400 dark:text-slate-500 text-xs mt-12 mb-6">© {new Date().getFullYear()} • Fait avec ❤️</p>
                 </div>
-              </div>
-
-              {/* RESULTATS (Style Mobile) */}
-              {logic.generatedLink && (
-                  <div ref={resultRef} className="mt-8 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 p-6 animate-in fade-in slide-in-from-bottom-4">
-                      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2"><span className="text-emerald-500">●</span> Calendrier prêt</h3>
-                      <div className="flex gap-2 mb-4">
-                          <input readOnly value={logic.generatedLink} className="flex-grow bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-600 dark:text-slate-300 font-mono" />
-                          <button onClick={logic.copyToClipboard} className="bg-[#005b8d] text-white px-4 rounded-lg font-bold text-sm">{logic.isCopied ? 'Copié!' : 'Copier'}</button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                          <a href={logic.generatedLink.replace(/^https?:\/\//, 'webcal://')} className="block text-center py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-sm hover:bg-slate-200 transition">Apple / Outlook</a>
-                          <a href={`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(logic.generatedLink.replace('https://', 'http://'))}`} target="_blank" className="block text-center py-3 bg-[#4285F4] hover:bg-[#3367d6] text-white font-bold rounded-xl text-sm transition">Google</a>
-                      </div>
-                  </div>
-              )}
-
-              <p className="text-center text-slate-400 dark:text-slate-500 text-xs mt-12 mb-6">© {new Date().getFullYear()} • Fait avec ❤️</p>
-            </div>
-        </main>
+            </main>
+        </div>
     </div>
   );
 };
@@ -247,14 +259,15 @@ const MobileView = ({ theme, toggleTheme, contentVisible }) => {
 // ==========================================
 // 3. COMPOSANT PC (Vue Glassmorphism)
 // ==========================================
+// (Pas de changement)
 const DesktopView = ({ theme, toggleTheme, contentVisible }) => {
   const logic = useCalendarLogic();
   const suggestionsRef = useRef(null);
   const inputRef = useRef(null);
-  const suggestionsListRef = useRef(null); // Ref pour la liste
+  const suggestionsListRef = useRef(null); 
   const [activeIndex, setActiveIndex] = useState(-1);
 
-  // ** FIX 1. SCROLL ET NAVIGATION CLAVIER **
+  // FIX 1. SCROLL ET NAVIGATION CLAVIER
   useEffect(() => {
     if (activeIndex >= 0 && suggestionsListRef.current) {
         const activeElement = suggestionsListRef.current.children[activeIndex];
@@ -422,10 +435,6 @@ const DesktopView = ({ theme, toggleTheme, contentVisible }) => {
             </div>
         </main>
         <style jsx global>{`
-            @keyframes blob { 0% { transform: translate(0px, 0px) scale(1); } 33% { transform: translate(30px, -50px) scale(1.1); } 66% { transform: translate(-20px, 20px) scale(0.9); } 100% { transform: translate(0px, 0px) scale(1); } }
-            .animate-blob { animation: blob 10s infinite; }
-            .animation-delay-2000 { animation-delay: 2s; }
-            .animation-delay-4000 { animation-delay: 4s; }
             .custom-scrollbar::-webkit-scrollbar { width: 6px; }
             .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
             .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
@@ -455,9 +464,9 @@ export default function Home() {
     
     // 2. Initialisation et Loader
     const initApp = async () => {
-        setServerStatus('online'); // Affichage direct pour la démo
+        setServerStatus('online'); 
 
-        await new Promise(resolve => setTimeout(resolve, 800)); // Attente pour le loader
+        await new Promise(resolve => setTimeout(resolve, 800));
         setAppLoaded(true);
         setTimeout(() => { 
           setContentVisible(true);
@@ -495,6 +504,11 @@ export default function Home() {
                 @keyframes loading-bar { 0% { width: 0%; margin-left: 0; } 50% { width: 100%; margin-left: 0; } 100% { width: 0%; margin-left: 100%; } }
                 .animate-bounce-subtle { animation: bounce-subtle 2s infinite; }
                 @keyframes bounce-subtle { 0%, 100% { transform: translateY(-3%); } 50% { transform: translateY(3%); } }
+                /* Styles pour les Blobs, déplacés ici pour la cohérence globale */
+                @keyframes blob { 0% { transform: translate(0px, 0px) scale(1); } 33% { transform: translate(30px, -50px) scale(1.1); } 66% { transform: translate(-20px, 20px) scale(0.9); } 100% { transform: translate(0px, 0px) scale(1); } }
+                .animate-blob { animation: blob 10s infinite; }
+                .animation-delay-2000 { animation-delay: 2s; }
+                .animation-delay-4000 { animation-delay: 4s; }
             `}</style>
         </div>
     );
