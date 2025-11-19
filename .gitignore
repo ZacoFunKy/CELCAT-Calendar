@@ -1,0 +1,44 @@
+Dépendances
+
+/node_modules
+/.pnp
+.pnp.js
+
+Testing
+
+/coverage
+
+Build de Next.js (généré automatiquement)
+
+/.next/
+/out/
+
+Build de production
+
+/build
+
+Fichiers divers
+
+.DS_Store
+*.pem
+
+Logs de debug (optionnel, mais propre)
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+Fichiers d'environnement locaux (contiennent souvent des clés secrètes)
+
+.env*.local
+.env
+
+Vercel
+
+.vercel
+
+Typescript
+
+*.tsbuildinfo
+next-env.d.ts
