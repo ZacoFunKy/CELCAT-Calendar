@@ -206,6 +206,11 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const groupParam = searchParams.get('group');
+    const holidaysParam = searchParams.get('holidays');
+    
+    // Override CONFIG.SHOW_HOLIDAYS based on URL parameter
+    const showHolidays = holidaysParam === 'true';
+    CONFIG.SHOW_HOLIDAYS = showHolidays;
 
     if (!groupParam) return NextResponse.json({ error: "Groupe manquant" }, { status: 400 });
 

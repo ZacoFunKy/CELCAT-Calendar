@@ -16,6 +16,7 @@ export default function Home() {
   const [generatedLink, setGeneratedLink] = useState('');
   const [isCopied, setIsCopied] = useState(false);
   const [origin, setOrigin] = useState('');
+  const [includeHolidays, setIncludeHolidays] = useState(false);
   const suggestionsRef = useRef(null);
 
   useEffect(() => {
@@ -90,7 +91,10 @@ export default function Home() {
   const generateLink = () => {
     if (selectedGroups.length === 0) return;
     const groupsString = selectedGroups.join(',');
-    const link = `${origin}/api/calendar.ics?group=${encodeURIComponent(groupsString)}`;
+    let link = `${origin}/api/calendar.ics?group=${encodeURIComponent(groupsString)}`;
+    if (includeHolidays) {
+      link += '&holidays=true';
+    }
     setGeneratedLink(link);
     setIsCopied(false);
   };
@@ -197,6 +201,22 @@ export default function Home() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* 2.5 OPTION VACANCES */}
+              <div className="flex items-center gap-3 py-2">
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeHolidays}
+                    onChange={(e) => {
+                      setIncludeHolidays(e.target.checked);
+                      setGeneratedLink(''); // Reset the link when option changes
+                    }}
+                    className="w-4 h-4 text-[#005b8d] bg-gray-100 border-gray-300 rounded focus:ring-[#005b8d] focus:ring-2"
+                  />
+                  <span className="ml-2 text-sm font-medium text-slate-700">Inclure les vacances</span>
+                </label>
               </div>
 
               {/* 3. BOUTON ACTION */}
