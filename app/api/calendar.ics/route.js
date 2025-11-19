@@ -28,7 +28,7 @@ const CONFIG = {
   GROUP_REGEX: /^[a-zA-Z0-9-_]+$/
 };
 
-export const revalidate = CONFIG.CACHE_TTL; 
+export const dynamic = 'force-dynamic';
 
 // ==========================================
 // 2. MONITORING SIMPLE
