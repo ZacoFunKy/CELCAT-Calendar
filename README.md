@@ -50,17 +50,17 @@ https://celcat-calendar.vercel.app/api/calendar.ics?group=5CYG500S%20-%20G2&holi
    cd votre-projet
    npm install
    ```
-    2. **Installer les dépendances**
+2. **Installer les dépendances**
     ```bash
     npm install
     # ou
     pnpm install
     ```
-    3. **Lancer le serveur de développement**
+3. **Lancer le serveur de développement**
     ```bash
     npm run dev
     ```
-    4. **Tester**
+4. **Tester**
 
     Ouvrez votre navigateur sur http://localhost:3000/api/calendar?group=VOTRE_GROUPE
 
