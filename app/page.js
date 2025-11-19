@@ -104,6 +104,10 @@ const MobileView = ({ theme, toggleTheme, contentVisible }) => {
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
   }
 
+
+  const getWebcalLink = () => logic.generatedLink ? logic.generatedLink.replace(/^https?:\/\//, 'webcal://') : '';
+  const getGoogleLink = () => logic.generatedLink ? `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(logic.generatedLink.replace('https://', 'http://'))}` : '';
+  
   return (
     <div className={`relative min-h-screen bg-slate-50 dark:bg-[#0B1120] font-sans text-slate-900 dark:text-white overflow-x-hidden selection:bg-[#005b8d]/30 transition-colors duration-500`}>
         
@@ -241,8 +245,8 @@ const MobileView = ({ theme, toggleTheme, contentVisible }) => {
                               <button onClick={logic.copyToClipboard} className="bg-[#005b8d] text-white px-4 rounded-lg font-bold text-sm">{logic.isCopied ? 'Copié!' : 'Copier'}</button>
                           </div>
                           <div className="grid grid-cols-2 gap-3">
-                              <a href={logic.generatedLink.replace(/^https?:\/\//, 'webcal://')} className="block text-center py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-sm hover:bg-slate-200 transition">Apple / Outlook</a>
-                              <a href={`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(logic.generatedLink.replace('https://', 'http://'))}`} target="_blank" className="block text-center py-3 bg-[#4285F4] hover:bg-[#3367d6] text-white font-bold rounded-xl text-sm transition">Google</a>
+                              <a href={getWebcalLink()} className="block text-center py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-sm hover:bg-slate-200 transition">Apple / Outlook</a>
+                              <a href={getGoogleLink()} target="_blank" className="block text-center py-3 bg-[#4285F4] hover:bg-[#3367d6] text-white font-bold rounded-xl text-sm transition">Google</a>
                           </div>
                       </div>
                   )}
