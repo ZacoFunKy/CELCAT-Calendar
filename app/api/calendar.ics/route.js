@@ -14,7 +14,6 @@ const CONFIG = {
   }
 };
 
-// ✅ CACHE ACTIVÉ : Mise à jour toutes les 1 heure (3600 secondes)
 export const revalidate = 3600; 
 
 // ==========================================
@@ -63,7 +62,6 @@ function cleanDescriptionText(text) {
     .filter(line => line.length > 0)
     .join('\n');
 }
-
 function processEvent(event) {
   const cleanDescription = cleanDescriptionText(event.description || "");
   if (CONFIG.blacklist.some(keyword => cleanDescription.includes(keyword))) return null;
@@ -84,7 +82,7 @@ function processEvent(event) {
   if (!isHoliday && summary.length < 3 && (!event.modules || event.modules.length === 0)) return null;
 
   // --- REMPLACEMENTS ---
-for (const [key, replacement] of Object.entries(CONFIG.replacements)) {
+  for (const [key, replacement] of Object.entries(CONFIG.replacements)) {
     if (summary.includes(key)) {
        summary = replacement;
     }
@@ -104,17 +102,34 @@ for (const [key, replacement] of Object.entries(CONFIG.replacements)) {
     }
   }
 
+  // --- GESTION INTELLIGENTE DU LIEU  ---
+  const site = cleanDescriptionText(event.sites ? event.sites.join(', ') : '');
+
+  let room = "";
+  const descriptionLines = cleanDescription.split('\n');
+  const roomLine = descriptionLines.find(line => /^(salles?|loc)\s*:/i.test(line.trim()));
+
+  if (roomLine) {
+    room = roomLine.replace(/^(salles?|loc)\s*:/i, '').trim();
+  }
+
+  let finalLocation = site;
+  if (room) {
+    if (!finalLocation.includes(room)) {
+        finalLocation = finalLocation ? `${finalLocation} - ${room}` : room;
+    }
+  }
+
   return {
     id: event.id,
     start: new Date(event.start),
     end: new Date(event.end),
     summary: summary,
     description: cleanDescription,
-    location: cleanDescriptionText(event.sites ? event.sites.join(', ') : ''),
+    location: finalLocation, // On utilise la nouvelle variable
     isHoliday: isHoliday
   };
 }
-
 // --- RÉSEAU ---
 
 async function fetchCelcatData(start, end, groupName, timeoutMs) {
