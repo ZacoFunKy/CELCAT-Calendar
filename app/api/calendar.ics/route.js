@@ -62,6 +62,7 @@ function cleanDescriptionText(text) {
     .filter(line => line.length > 0)
     .join('\n');
 }
+
 function processEvent(event) {
   const cleanDescription = cleanDescriptionText(event.description || "");
   if (CONFIG.blacklist.some(keyword => cleanDescription.includes(keyword))) return null;
@@ -82,8 +83,41 @@ function processEvent(event) {
   const isHoliday = (event.eventCategory && event.eventCategory.includes('Vacances')) || 
                     summary.toLowerCase().includes('vacances');
 
-  if (isHoliday && !CONFIG.SHOW_HOLIDAYS) return null;
-  if (!isHoliday && summary.length < 3 && (!event.modules || event.modules.length === 0)) return null;
+  // Gérer les dates brutes
+  let startDate = new Date(event.start);
+  let endDate = event.end ? new Date(event.end) : new Date(event.start);
+
+  if (isHoliday) {
+    // Filtrer les vacances hors année académique
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const academicYearStart = currentMonth < 6 ? currentYear - 1 : currentYear;
+    const academicYearEnd = academicYearStart + 1;
+    
+    const academicStart = new Date(academicYearStart, 7, 1); 
+    const academicEnd = new Date(academicYearEnd, 7, 31);
+    
+    if (startDate < academicStart || startDate > academicEnd) return null;
+    
+    if (!CONFIG.SHOW_HOLIDAYS) return null;
+
+    // *** MODIFICATION POUR VACANCES ***
+    // On force le mode "Toute la journée" et on vide la description
+    return {
+      id: event.id,
+      start: startDate,
+      end: endDate,
+      summary: summary, // Garde juste le titre (ex: "Vacances d'hiver")
+      description: null, // Pas de description
+      location: null,    // Pas de lieu
+      isHoliday: true,
+      allDay: true       // FORCE L'AFFICHAGE EN BANDEAU
+    };
+  }
+  
+  // Si ce n'est pas des vacances et que le titre est trop court sans module
+  if (summary.length < 3 && (!event.modules || event.modules.length === 0)) return null;
 
   // --- 4. REMPLACEMENTS ---
   for (const [key, replacement] of Object.entries(CONFIG.replacements)) {
@@ -123,14 +157,11 @@ function processEvent(event) {
   let finalLocation = cleanDescriptionText(event.sites ? event.sites.join(', ') : '');
 
   const descriptionLines = cleanDescription.split('\n');
-  
   const roomRegex = /(?:salle\s+\w+|amphi(?:théâtre)?\s+\w+|bât\.|a\d{2}\/|cremi)/i;
-  
   const specificRoomLine = descriptionLines.find(line => roomRegex.test(line));
 
   if (specificRoomLine) {
     const cleanRoom = specificRoomLine.trim();
-    
     if (finalLocation) {
       if (cleanRoom.includes(finalLocation) || cleanRoom.includes("CREMI") || cleanRoom.includes("/")) {
          finalLocation = cleanRoom;
@@ -142,16 +173,24 @@ function processEvent(event) {
     }
   }
 
+  // Pour les événements classiques, gérer le "allDay" fourni par Celcat ou calculer +1 jour si pas de fin
+  if (event.allDay && !event.end) {
+    endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 1);
+  }
+
   return {
     id: event.id,
-    start: new Date(event.start),
-    end: new Date(event.end),
+    start: startDate,
+    end: endDate,
     summary: summary,
     description: cleanDescription,
     location: finalLocation,
-    isHoliday: isHoliday
+    isHoliday: false,
+    allDay: event.allDay || false // Par défaut false sauf si Celcat le dit
   };
 }
+
 // --- RÉSEAU ---
 
 async function fetchCelcatData(start, end, groupName, timeoutMs) {
@@ -206,11 +245,16 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const groupParam = searchParams.get('group');
+    const holidaysParam = searchParams.get('holidays');
 
     if (!groupParam) return NextResponse.json({ error: "Groupe manquant" }, { status: 400 });
 
     const groups = groupParam.split(',').map(g => g.trim()).filter(g => g.length > 0);
     if (groups.length === 0) return NextResponse.json({ error: "Groupe invalide" }, { status: 400 });
+
+    // Appliquer le paramètre holidays à la config
+    const showHolidays = holidaysParam === 'true';
+    CONFIG.SHOW_HOLIDAYS = showHolidays;
 
     const results = await Promise.all(groups.map(group => getEventsForSingleGroup(group)));
     const allRawEvents = results.flat();
@@ -241,7 +285,8 @@ export async function GET(request) {
         summary: event.summary,
         description: event.description,
         location: event.location,
-        timezone: CONFIG.timezone
+        timezone: CONFIG.timezone,
+        allDay: event.allDay // IMPORTANT: On passe la propriété allDay ici
       });
 
       processedEventIds.add(rawEvent.id);
