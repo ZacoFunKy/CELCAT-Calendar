@@ -15,10 +15,28 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="fr">
-      <body className={`${inter.className} bg-gray-50 text-gray-900 antialiased`}>
-        {children}
-      </body>
+    <html lang="fr" suppressHydrationWarning>
+      <head>
+        {}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var storage = localStorage.getItem('theme');
+                  var support = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                  if (storage === 'dark' || (!storage && support)) {
+                    document.documentElement.classList.add('dark');
+                  } else {
+                    document.documentElement.classList.remove('dark');
+                  }
+                } catch (e) {}
+              })()
+            `,
+          }}
+        />
+      </head>
+      <body className={inter.className}>{children}</body>
     </html>
   )
 }
