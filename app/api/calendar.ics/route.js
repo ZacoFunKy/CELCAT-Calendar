@@ -66,7 +66,11 @@ function processEvent(event) {
   const cleanDescription = cleanDescriptionText(event.description || "");
   if (CONFIG.blacklist.some(keyword => cleanDescription.includes(keyword))) return null;
 
-  // --- TITRE ---
+  // --- 1. ANALYSE GLOBALE DU TEXTE ---
+  const fullTextScan = (event.eventCategory + " " + cleanDescription).toUpperCase();
+  const sitesText = (event.sites ? event.sites.join(', ') : '').toUpperCase();
+
+  // --- 2. TITRE DE BASE ---
   let summary = "";
   if (event.modules && event.modules.length > 0) summary = event.modules[0];
   else if (event.eventCategory) summary = event.eventCategory;
@@ -74,49 +78,67 @@ function processEvent(event) {
   
   summary = cleanDescriptionText(summary);
 
-  // --- VACANCES ---
+  // --- 3. GESTION DES VACANCES ---
   const isHoliday = (event.eventCategory && event.eventCategory.includes('Vacances')) || 
                     summary.toLowerCase().includes('vacances');
 
   if (isHoliday && !CONFIG.SHOW_HOLIDAYS) return null;
   if (!isHoliday && summary.length < 3 && (!event.modules || event.modules.length === 0)) return null;
 
-  // --- REMPLACEMENTS ---
+  // --- 4. REMPLACEMENTS ---
   for (const [key, replacement] of Object.entries(CONFIG.replacements)) {
-    if (summary.includes(key)) {
-       summary = replacement;
-    }
+    if (summary.includes(key)) summary = replacement;
   }
 
-  // --- PRÉFIXES ---
-  const fullTextScan = (event.eventCategory + " " + summary + " " + cleanDescription).toUpperCase();
   let prefix = "";
-  if (/\bTD\b/.test(fullTextScan) || fullTextScan.includes("TD")) prefix = "TD";
-  else if (/\bTP\b/.test(fullTextScan) || fullTextScan.includes("TP")) prefix = "TP";
-  else if (fullTextScan.includes("CM") || fullTextScan.includes("COURS") || fullTextScan.includes("MAGISTRAL")) prefix = "";
-  else if (fullTextScan.includes("EXAM") || fullTextScan.includes("EVALUATION") || fullTextScan.includes("PARTIEL")) prefix = "📝 EXAM";
+  let isMachine = false;
+
+  if (fullTextScan.includes("MACHINE") || fullTextScan.includes("PC") || sitesText.includes("CREMI") || fullTextScan.includes("CREMI")) {
+    isMachine = true;
+  }
+
+  if (/\bTD\b/.test(fullTextScan) || fullTextScan.includes("TD")) {
+    prefix = isMachine ? "TD Machine" : "TD";
+  }
+  else if (/\bTP\b/.test(fullTextScan) || fullTextScan.includes("TP")) {
+    prefix = isMachine ? "TP Machine" : "TP";
+  }
+  else if (fullTextScan.includes("CM") || fullTextScan.includes("COURS") || fullTextScan.includes("MAGISTRAL")) {
+    prefix = "CM"; 
+  }
+  else if (fullTextScan.includes("EXAM") || fullTextScan.includes("EVALUATION") || fullTextScan.includes("PARTIEL")) {
+    prefix = "📝 EXAM";
+  }
 
   if (prefix) {
-    if (!summary.toUpperCase().startsWith(prefix)) {
+    const summaryUpper = summary.toUpperCase();
+    if (!summaryUpper.startsWith(prefix.toUpperCase()) && !summaryUpper.startsWith("TD") && !summaryUpper.startsWith("TP")) {
       summary = `${prefix} - ${summary}`;
+    } else if (isMachine && !summaryUpper.includes("MACHINE")) {
+      summary = `${prefix} - ${summary.replace(/^(TD|TP)\s*-?\s*/i, '')}`;
     }
   }
 
-  // --- GESTION INTELLIGENTE DU LIEU  ---
-  const site = cleanDescriptionText(event.sites ? event.sites.join(', ') : '');
+  // --- 6. GESTION AVANCÉE DU LIEU ---
+  let finalLocation = cleanDescriptionText(event.sites ? event.sites.join(', ') : '');
 
-  let room = "";
   const descriptionLines = cleanDescription.split('\n');
-  const roomLine = descriptionLines.find(line => /^(salles?|loc)\s*:/i.test(line.trim()));
+  
+  const roomRegex = /(?:salle\s+\w+|amphi(?:théâtre)?\s+\w+|bât\.|a\d{2}\/|cremi)/i;
+  
+  const specificRoomLine = descriptionLines.find(line => roomRegex.test(line));
 
-  if (roomLine) {
-    room = roomLine.replace(/^(salles?|loc)\s*:/i, '').trim();
-  }
-
-  let finalLocation = site;
-  if (room) {
-    if (!finalLocation.includes(room)) {
-        finalLocation = finalLocation ? `${finalLocation} - ${room}` : room;
+  if (specificRoomLine) {
+    const cleanRoom = specificRoomLine.trim();
+    
+    if (finalLocation) {
+      if (cleanRoom.includes(finalLocation) || cleanRoom.includes("CREMI") || cleanRoom.includes("/")) {
+         finalLocation = cleanRoom;
+      } else {
+         finalLocation = `${finalLocation} - ${cleanRoom}`;
+      }
+    } else {
+      finalLocation = cleanRoom;
     }
   }
 
@@ -126,7 +148,7 @@ function processEvent(event) {
     end: new Date(event.end),
     summary: summary,
     description: cleanDescription,
-    location: finalLocation, // On utilise la nouvelle variable
+    location: finalLocation,
     isHoliday: isHoliday
   };
 }
