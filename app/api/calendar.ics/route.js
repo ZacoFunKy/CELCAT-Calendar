@@ -146,7 +146,19 @@ async function getEventsForSingleGroup(groupName) {
         if (changeStatus.changed) {
           logger.info("Schedule changed", { group: groupName, previous: changeStatus.previousHash, new: changeStatus.newHash });
           // Send notification asynchronously (don't wait for it)
-          sendPushNotification(changeStatus).catch(err => 
+          sendPushNotification({
+            ...changeStatus,
+            type: 'schedule_change'
+          }).catch(err => 
+            logger.error("Failed to send notification", err)
+          );
+        } else {
+          // Send refresh notification even if no change
+          sendPushNotification({
+            groupName,
+            eventCount: safeEvents.length,
+            type: 'refresh'
+          }).catch(err => 
             logger.error("Failed to send notification", err)
           );
         }
@@ -510,6 +522,17 @@ export async function GET(request) {
     const executionTime = Date.now() - startTime;
 
     logger.info("Génération OK", { groups, events: realCourseCount, ms: executionTime });
+
+    // Send download notification for each group
+    for (const group of groups) {
+      sendPushNotification({
+        groupName: group,
+        eventCount: realCourseCount,
+        type: 'download'
+      }).catch(err => 
+        logger.error("Failed to send download notification", err)
+      );
+    }
 
     return new NextResponse(calendar.toString(), {
       status: 200,

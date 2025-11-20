@@ -62,16 +62,34 @@ export function checkScheduleChanges(groupName, events) {
 
 /**
  * Send push notification
- * For now, this logs the notification (developer will receive it via logs)
- * In the future, this can be extended to use services like FCM, OneSignal, etc.
+ * Sends notifications for downloads, refreshes, and schedule changes
  */
 export async function sendPushNotification(notification) {
-  const { groupName, eventCount } = notification;
+  const { groupName, eventCount, type = 'download' } = notification;
+  
+  // Determine message based on notification type
+  let message;
+  let emoji;
+  switch (type) {
+    case 'schedule_change':
+      message = `Modification détectée pour ${groupName}`;
+      emoji = '🔄';
+      break;
+    case 'refresh':
+      message = `Actualisation du calendrier ${groupName}`;
+      emoji = '🔄';
+      break;
+    case 'download':
+    default:
+      message = `Téléchargement du calendrier ${groupName}`;
+      emoji = '📥';
+      break;
+  }
   
   // Log for developer
   console.log('🔔 PUSH NOTIFICATION:', JSON.stringify({
-    type: 'schedule_change',
-    message: `Schedule changed for ${groupName}`,
+    type,
+    message,
     details: {
       group: groupName,
       events: eventCount,
@@ -83,17 +101,23 @@ export async function sendPushNotification(notification) {
   const webhookUrl = process.env.NOTIFICATION_WEBHOOK_URL;
   if (webhookUrl) {
     try {
-      await fetch(webhookUrl, {
+      const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          text: `📅 Schedule Update: ${groupName} has ${eventCount} events`,
+          text: `${emoji} ${message}`,
           timestamp: new Date().toISOString(),
           group: groupName,
+          eventCount: eventCount || 0,
+          type,
         }),
       });
+      
+      if (!response.ok) {
+        console.error('Webhook response not OK:', response.status, await response.text());
+      }
     } catch (error) {
       console.error('Failed to send webhook notification:', error);
     }
