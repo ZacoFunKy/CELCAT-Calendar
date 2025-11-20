@@ -177,10 +177,54 @@ function processEvent(event, { showHolidays }) {
   const fullTextScan = ((event.eventCategory || "") + " " + cleanDescription).toUpperCase();
   const sitesText = (event.sites ? event.sites.join(', ') : '').toUpperCase();
 
+  // Extract course name and professor from description
+  const descriptionLines = cleanDescription.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  
   let summary = "";
-  if (event.modules && event.modules.length > 0) summary = event.modules[0];
-  else if (event.eventCategory) summary = event.eventCategory;
-  else summary = cleanDescription.split('\n')[0] || "Cours";
+  let professorName = "";
+  
+  // Look for full course name in description (usually first line)
+  if (descriptionLines.length > 0) {
+    // First line is often the full course name
+    const firstLine = descriptionLines[0];
+    // Check if it's a real course name (not just a short code)
+    if (firstLine.length > 15 || firstLine.split(' ').length >= 3) {
+      summary = firstLine;
+    }
+  }
+  
+  // If no good summary from description, fall back to module name
+  if (!summary) {
+    if (event.modules && event.modules.length > 0) summary = event.modules[0];
+    else if (event.eventCategory) summary = event.eventCategory;
+    else summary = descriptionLines[0] || "Cours";
+  }
+  
+  // Look for professor name in description (usually contains patterns like names with capitalization)
+  // Professor names are often on separate lines or after course name
+  for (let i = 1; i < descriptionLines.length; i++) {
+    const line = descriptionLines[i];
+    // Look for lines that might be professor names (capitalized words, not too long, not room info)
+    if (line.length > 3 && line.length < 50 && 
+        !line.toLowerCase().includes('salle') && 
+        !line.toLowerCase().includes('amphi') &&
+        !line.toLowerCase().includes('bât') &&
+        !line.toLowerCase().includes('cremi') &&
+        !line.match(/^(TD|TP|CM)\b/i) &&
+        !line.match(/^\d/) &&
+        !line.includes('/')) {
+      // Check if it looks like a name (has at least 2 words, mostly alphabetic)
+      const words = line.split(/\s+/);
+      if (words.length >= 2 && words.length <= 5) {
+        const hasAlphaOnly = words.every(word => /^[A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ][a-zàâäçèéêëîïôöùûü-]+$/i.test(word));
+        if (hasAlphaOnly) {
+          professorName = line;
+          break;
+        }
+      }
+    }
+  }
+  
   summary = cleanDescriptionText(summary);
 
   const isHoliday = (event.eventCategory && event.eventCategory.includes('Vacances')) || 
@@ -232,9 +276,13 @@ function processEvent(event, { showHolidays }) {
       summary = `${prefix} - ${summary.replace(/^(TD|TP)\s*-?\s*/i, '')}`;
     }
   }
+  
+  // Append professor name if found
+  if (professorName) {
+    summary = `${summary} - ${professorName}`;
+  }
 
   let finalLocation = cleanDescriptionText(event.sites ? event.sites.join(', ') : '');
-  const descriptionLines = cleanDescription.split('\n');
   const roomRegex = /(?:salle\s+\w+|amphi(?:théâtre)?\s+\w+|bât\.|a\d{2}\/|cremi)/i;
   const specificRoomLine = descriptionLines.find(line => roomRegex.test(line));
 
@@ -247,6 +295,14 @@ function processEvent(event, { showHolidays }) {
     } else {
       finalLocation = cleanRoom;
     }
+  }
+  
+  // Clean up duplicate building names in location (e.g., "Bâtiment A29 - A29/ Salle 105" -> "Bâtiment A29/ Salle 105")
+  if (finalLocation) {
+    // Pattern to match "Bâtiment XYZ - XYZ/" and replace with "Bâtiment XYZ/"
+    finalLocation = finalLocation.replace(/Bâtiment\s+([A-Z]\d+)\s*-\s*\1\//gi, 'Bâtiment $1/');
+    // More general pattern for building names
+    finalLocation = finalLocation.replace(/([A-Z]\d+)\s*-\s*\1\//gi, '$1/');
   }
 
   if (event.allDay && !event.end) {
