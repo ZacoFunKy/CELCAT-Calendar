@@ -1,5 +1,7 @@
 # 📅 API Convertisseur Celcat vers ICS
 
+[![CI/CD](https://github.com/ZacoFunKy/CELCAT-Calendar/actions/workflows/ci.yml/badge.svg)](https://github.com/ZacoFunKy/CELCAT-Calendar/actions/workflows/ci.yml)
+
 Ce projet est une API construite avec **Next.js** qui permet de récupérer, nettoyer et transformer les emplois du temps universitaires (format Celcat) en un flux de calendrier standardisé **ICS**. 
 
 Il est conçu pour être compatible avec Google Calendar, Apple Calendar et Outlook, en résolvant les problèmes courants d'affichage (doublons, formatage illisible, gestion des vacances).
@@ -63,6 +65,40 @@ https://celcat-calendar.vercel.app/api/calendar.ics?group=5CYG500S%20-%20G2&holi
 4. **Tester**
 
     Ouvrez votre navigateur sur http://localhost:3000/api/calendar?group=VOTRE_GROUPE
+
+## 🧪 Tests et Qualité
+
+Ce projet utilise Jest pour les tests automatisés et GitHub Actions pour l'intégration continue.
+
+### Lancer les tests
+
+```bash
+# Exécuter tous les tests
+npm test
+
+# Exécuter les tests avec couverture
+npm run test:coverage
+
+# Exécuter les tests en mode watch
+npm run test:watch
+```
+
+### Tests inclus
+
+- **Tests de format ICS** : Validation RFC 5545, structure du calendrier, encodage des caractères
+- **Tests d'API** : Validation des paramètres, gestion des erreurs, retry logic
+- **Tests de traitement d'événements** : Formatage, filtrage, nettoyage HTML, extraction de localisation
+- **Tests de cache** : Headers de cache, revalidation
+
+### CI/CD
+
+Le projet utilise GitHub Actions pour :
+- ✅ Exécuter les tests sur Node.js 18.x et 20.x
+- ✅ Vérifier le linting du code
+- ✅ Valider le build Next.js
+- ✅ Valider le format ICS généré
+
+Les workflows s'exécutent automatiquement sur les PRs et les pushs vers les branches `main` et `develop`.
 
 ## ⚙️ Configuration
 
