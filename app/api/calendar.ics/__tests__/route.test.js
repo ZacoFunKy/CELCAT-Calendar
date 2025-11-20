@@ -488,6 +488,35 @@ describe('Calendar ICS API Route', () => {
       expect(location).toContain('Salle 105');
       expect(location).not.toMatch(/A29\s*-\s*A29\//);
     });
+
+    it('should remove duplicate building names with extensions from location', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'location-extension-event',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'Test Course\nBâtiment A9 - A9.a / Amphithéâtre 1',
+          modules: ['Test'],
+          sites: ['Bâtiment A9']
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Parse and check location
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      const vevent = comp.getFirstSubcomponent('vevent');
+      const location = vevent.getFirstPropertyValue('location');
+
+      // Should not have duplicate "A9 - A9.a", should be "Bâtiment A9.a"
+      expect(location).toContain('Bâtiment A9.a');
+      expect(location).toContain('Amphithéâtre 1');
+      expect(location).not.toMatch(/A9\s*-\s*A9\.a/);
+    });
   });
 
   describe('Error Handling', () => {

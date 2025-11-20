@@ -183,13 +183,41 @@ function processEvent(event, { showHolidays }) {
   let summary = "";
   let professorName = "";
   
-  // Look for full course name in description (usually first line)
-  if (descriptionLines.length > 0) {
-    // First line is often the full course name
-    const firstLine = descriptionLines[0];
-    // Check if it's a real course name (not just a short code)
-    if (firstLine.length > 15 || firstLine.split(' ').length >= 3) {
-      summary = firstLine;
+  // Look for full course name in description
+  // Full course name is typically a longer descriptive line (not a code)
+  // Avoid lines that look like module codes (e.g., "4TYG503U Com Pro")
+  for (const line of descriptionLines) {
+    // Skip lines that look like module codes (start with digits and letters followed by short words)
+    if (/^\d[A-Z0-9]+\s+/i.test(line)) {
+      continue;
+    }
+    
+    // Look for a substantial course name
+    // Must be either:
+    // - At least 18 characters long (lowered to catch "Systèmes comptables"), OR
+    // - Have 3+ words (to catch multi-word course names)
+    const wordCount = line.split(' ').length;
+    if (line.length >= 18 || wordCount >= 3) {
+      // Additional check: avoid lines that are clearly not course names
+      if (!line.toLowerCase().includes('salle') && 
+          !line.toLowerCase().includes('amphi') &&
+          !line.toLowerCase().includes('bât') &&
+          !line.match(/^(TD|TP|CM)\b/i) &&
+          !line.includes('/')) {
+        
+        // Extra validation: prefer lines with lowercase letters (course names)
+        // over lines with mostly uppercase (likely professor names)
+        // Professor names like "POURTIE R Frederic" have uppercase first letters
+        const hasLowercase = /[a-zàâäçèéêëîïôöùûü]/.test(line);
+        const words = line.split(/\s+/);
+        const mostlyUppercase = words.filter(word => word.length > 1 && word === word.toUpperCase()).length > words.length / 2;
+        
+        if (hasLowercase && !mostlyUppercase) {
+          // This looks like a course name (has lowercase, not mostly uppercase)
+          summary = line;
+          break;
+        }
+      }
     }
   }
   
@@ -200,12 +228,14 @@ function processEvent(event, { showHolidays }) {
     else summary = descriptionLines[0] || "Cours";
   }
   
-  // Look for professor name in description (usually contains patterns like names with capitalization)
-  // Professor names are often on separate lines or after course name
-  for (let i = 1; i < descriptionLines.length; i++) {
-    const line = descriptionLines[i];
-    // Look for lines that might be professor names (capitalized words, not too long, not room info)
-    if (line.length > 3 && line.length < 50 && 
+  // Look for professor name in description
+  // Professor names are typically all uppercase or capitalized (e.g., "LOURME Alexandre" or "POURTIE R Frederic")
+  for (const line of descriptionLines) {
+    // Skip the line we used for summary
+    if (line === summary) continue;
+    
+    // Look for lines that might be professor names
+    if (line.length > 3 && line.length < 60 && 
         !line.toLowerCase().includes('salle') && 
         !line.toLowerCase().includes('amphi') &&
         !line.toLowerCase().includes('bât') &&
@@ -213,11 +243,17 @@ function processEvent(event, { showHolidays }) {
         !line.match(/^(TD|TP|CM)\b/i) &&
         !line.match(/^\d/) &&
         !line.includes('/')) {
-      // Check if it looks like a name (has at least 2 words, mostly alphabetic)
+      
       const words = line.split(/\s+/);
-      if (words.length >= 2 && words.length <= 5) {
-        const hasAlphaOnly = words.every(word => /^[A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ][a-zàâäçèéêëîïôöùûü-]+$/i.test(word));
-        if (hasAlphaOnly) {
+      // Professor names usually have 2-4 words (e.g., "LOURME Alexandre", "POURTIE R Frederic")
+      if (words.length >= 2 && words.length <= 4) {
+        // Check if it's mostly alphabetic (allowing for single letter middle names)
+        const isName = words.every(word => 
+          /^[A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ][a-zàâäçèéêëîïôöùûü-]*$/i.test(word) || 
+          /^[A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ]$/i.test(word) // Single letter (middle initial)
+        );
+        
+        if (isName) {
           professorName = line;
           break;
         }
@@ -297,12 +333,20 @@ function processEvent(event, { showHolidays }) {
     }
   }
   
-  // Clean up duplicate building names in location (e.g., "Bâtiment A29 - A29/ Salle 105" -> "Bâtiment A29/ Salle 105")
+  // Clean up duplicate building names in location
+  // Examples:
+  // - "Bâtiment A29 - A29/ Salle 105" -> "Bâtiment A29/ Salle 105"
+  // - "Bâtiment A9 - A9.a / Amphithéâtre 1" -> "Bâtiment A9.a / Amphithéâtre 1"
   if (finalLocation) {
     // Pattern to match "Bâtiment XYZ - XYZ/" and replace with "Bâtiment XYZ/"
     finalLocation = finalLocation.replace(/Bâtiment\s+([A-Z]\d+)\s*-\s*\1\//gi, 'Bâtiment $1/');
-    // More general pattern for building names
+    
+    // Pattern to match "Bâtiment XYZ - XYZ.abc" and replace with "Bâtiment XYZ.abc"
+    finalLocation = finalLocation.replace(/Bâtiment\s+([A-Z]\d+)\s*-\s*\1(\.[a-z]+)/gi, 'Bâtiment $1$2');
+    
+    // More general pattern for building names without "Bâtiment" prefix
     finalLocation = finalLocation.replace(/([A-Z]\d+)\s*-\s*\1\//gi, '$1/');
+    finalLocation = finalLocation.replace(/([A-Z]\d+)\s*-\s*\1(\.[a-z]+)/gi, '$1$2');
   }
 
   if (event.allDay && !event.end) {
