@@ -187,36 +187,45 @@ function processEvent(event, { showHolidays }) {
   // Full course name is typically a descriptive line (not a code)
   // Avoid lines that look like module codes (e.g., "4TYG503U Com Pro")
   for (const line of descriptionLines) {
-    // Skip lines that look like module codes (start with digits and letters followed by short words)
+    // Skip lines that look like module codes (start with digits and letters followed by text)
     if (/^\d[A-Z0-9]+\s+/i.test(line)) {
       continue;
     }
     
-    // Skip common header/category words
-    if (/^(Cours|TD|TP|CM|Examen)$/i.test(line)) {
+    // Skip common header/category words including event types
+    if (/^(Cours|TD|TP|CM|Examen|Examens|Contrôle Continu)$/i.test(line)) {
       continue;
     }
-    
-    // Look for course name
-    // Can be:
-    // - A substantial name (≥18 chars OR ≥3 words), OR
-    // - A shorter name (even 1 word like "Finance") if it has lowercase letters
-    const wordCount = line.split(' ').length;
-    const hasLowercase = /[a-zàâäçèéêëîïôöùûü]/.test(line);
     
     // Skip lines that are clearly not course names
     if (line.toLowerCase().includes('salle') || 
         line.toLowerCase().includes('amphi') ||
         line.toLowerCase().includes('bât') ||
-        line.includes('/')) {
+        (line.includes('/') && !line.includes('-'))) {  // Allow hyphens but not room separators
       continue;
+    }
+    
+    const wordCount = line.split(' ').length;
+    const hasLowercase = /[a-zàâäçèéêëîïôöùûü]/.test(line);
+    
+    // Skip if it looks like a typical professor name pattern
+    // Professor names: "LASTNAME Firstname" or "LASTNAME-LASTNAME Firstname"
+    const words = line.split(/\s+/);
+    const firstWord = words[0] || "";
+    const secondWord = words[1] || "";
+    const isProfessorPattern = words.length === 2 && 
+                                /^[A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ][A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ-]+$/.test(firstWord) &&
+                                /^[A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ][a-zàâäçèéêëîïôöùûü]+$/.test(secondWord);
+    
+    if (isProfessorPattern) {
+      continue;  // This looks like "LASTNAME Firstname", skip it
     }
     
     // Check if this could be a course name
     if (line.length >= 18 || wordCount >= 3) {
       // Longer names: prefer those with lowercase letters over mostly-uppercase (likely professor names)
-      const words = line.split(/\s+/);
-      const mostlyUppercase = words.filter(word => word.length > 1 && word === word.toUpperCase()).length > words.length / 2;
+      const uppercaseWords = words.filter(word => word.length > 1 && word === word.toUpperCase());
+      const mostlyUppercase = uppercaseWords.length > words.length / 2;
       
       if (hasLowercase && !mostlyUppercase) {
         summary = line;
@@ -225,10 +234,6 @@ function processEvent(event, { showHolidays }) {
     } else if (wordCount <= 2 && hasLowercase) {
       // Shorter names (1-2 words like "Finance" or "Base données")
       // Must have lowercase to distinguish from professor names
-      const words = line.split(/\s+/);
-      
-      // Make sure it's not a professor name (which typically has 2+ words with first letters uppercase)
-      // Course names usually have lowercase letters within words
       const hasLowercaseInWords = words.some(word => /[a-zàâäçèéêëîïôöùûü]/.test(word.substring(1)));
       
       if (hasLowercaseInWords || wordCount === 1) {
@@ -240,17 +245,30 @@ function processEvent(event, { showHolidays }) {
   }
   
   // If no good summary from description, fall back to module name
+  // But strip the module code prefix (e.g., "5CYG501U Finance" -> "Finance")
   if (!summary) {
-    if (event.modules && event.modules.length > 0) summary = event.modules[0];
+    if (event.modules && event.modules.length > 0) {
+      const moduleName = event.modules[0];
+      // Remove module code prefix (pattern: digits + letters + space)
+      summary = moduleName.replace(/^\d[A-Z0-9]+\s+/i, '').trim();
+      // If nothing left after stripping, use the original
+      if (!summary) summary = moduleName;
+    }
     else if (event.eventCategory) summary = event.eventCategory;
     else summary = descriptionLines[0] || "Cours";
   }
   
   // Look for professor name in description
   // Professor names are typically all uppercase or capitalized (e.g., "LOURME Alexandre" or "POURTIE R Frederic")
+  // Also handle names with hyphens like "BENOIS-PINEAU Jenny"
   for (const line of descriptionLines) {
     // Skip the line we used for summary
     if (line === summary) continue;
+    
+    // Skip event type lines
+    if (/^(TD|TP|CM|Cours|Examen|Examens|Contrôle Continu)$/i.test(line)) {
+      continue;
+    }
     
     // Look for lines that might be professor names
     if (line.length > 3 && line.length < 60 && 
@@ -258,14 +276,13 @@ function processEvent(event, { showHolidays }) {
         !line.toLowerCase().includes('amphi') &&
         !line.toLowerCase().includes('bât') &&
         !line.toLowerCase().includes('cremi') &&
-        !line.match(/^(TD|TP|CM)\b/i) &&
         !line.match(/^\d/) &&
         !line.includes('/')) {
       
       const words = line.split(/\s+/);
-      // Professor names usually have 2-4 words (e.g., "LOURME Alexandre", "POURTIE R Frederic")
+      // Professor names usually have 2-4 words (e.g., "LOURME Alexandre", "POURTIE R Frederic", "BENOIS-PINEAU Jenny")
       if (words.length >= 2 && words.length <= 4) {
-        // Check if it's mostly alphabetic (allowing for single letter middle names)
+        // Check if it's mostly alphabetic (allowing for single letter middle names and hyphens)
         const isName = words.every(word => 
           /^[A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ][a-zàâäçèéêëîïôöùûü-]*$/i.test(word) || 
           /^[A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ]$/i.test(word) // Single letter (middle initial)
