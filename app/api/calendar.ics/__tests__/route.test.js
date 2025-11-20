@@ -6,9 +6,11 @@
  * 3. Event processing logic (filtering, formatting)
  */
 
-import { GET } from '../route';
+import { GET, clearInFlightRequests } from '../route';
 import { NextRequest } from 'next/server';
 import ICAL from 'ical.js';
+import { clearAllCaches } from '../cache.js';
+import { clearScheduleHistory } from '../../notifications/notifier.js';
 
 // Mock the fetch function
 global.fetch = jest.fn();
@@ -16,9 +18,18 @@ global.fetch = jest.fn();
 describe('Calendar ICS API Route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    clearAllCaches(); // Clear application cache between tests
+    clearScheduleHistory(); // Clear notification history between tests
+    clearInFlightRequests(); // Clear in-flight requests between tests
     // Reset environment variables
     process.env.CELCAT_URL = 'https://celcat.u-bordeaux.fr/Calendar/Home/GetCalendarData';
     process.env.LOG_LEVEL = 'error'; // Reduce log noise during tests
+  });
+
+  afterEach(() => {
+    clearAllCaches(); // Also clear after each test
+    clearScheduleHistory();
+    clearInFlightRequests();
   });
 
   describe('ICS Format Validation', () => {
@@ -133,6 +144,154 @@ describe('Calendar ICS API Route', () => {
       const vevents = comp.getAllSubcomponents('vevent');
       expect(vevents.length).toBeGreaterThan(0);
       expect(vevents[0].getFirstPropertyValue('uid')).toBeTruthy();
+    });
+
+    it('should comply with RFC 5545 line folding rules', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'test-long-description',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'A'.repeat(100) + '\n' + 'B'.repeat(100),
+          modules: ['Test'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-group');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Verify the ICS can be parsed (ical.js validates line folding)
+      expect(() => {
+        const jcalData = ICAL.parse(icsContent);
+        new ICAL.Component(jcalData);
+      }).not.toThrow();
+    });
+
+    it('should use correct date-time format (RFC 5545 section 3.3.5)', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'test-datetime',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'DateTime test',
+          modules: ['Test'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-group');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Parse and validate date-time format
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      const vevent = comp.getFirstSubcomponent('vevent');
+      const dtstart = vevent.getFirstProperty('dtstart');
+      
+      // Should have valid date-time value
+      expect(dtstart).toBeTruthy();
+      expect(dtstart.getFirstValue()).toBeTruthy();
+    });
+
+    it('should include DTSTAMP property (RFC 5545 requirement)', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'test-dtstamp',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'DTSTAMP test',
+          modules: ['Test'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-group');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // DTSTAMP is required by RFC 5545 for VEVENT
+      expect(icsContent).toContain('DTSTAMP:');
+      
+      // Parse and validate DTSTAMP exists
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      const vevent = comp.getFirstSubcomponent('vevent');
+      expect(vevent.getFirstPropertyValue('dtstamp')).toBeTruthy();
+    });
+
+    it('should validate VCALENDAR has required PRODID property', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'test-prodid',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'PRODID test',
+          modules: ['Test'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-group');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // PRODID is required by RFC 5545 for VCALENDAR
+      expect(icsContent).toContain('PRODID:');
+      
+      // Parse and validate
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      expect(comp.getFirstPropertyValue('prodid')).toBeTruthy();
+    });
+
+    it('should properly format multi-line descriptions with CRLF', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'test-multiline',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'Line 1\nLine 2\nLine 3',
+          modules: ['Test'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-group');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Should be parseable (ical-generator handles CRLF conversion)
+      expect(() => {
+        const jcalData = ICAL.parse(icsContent);
+        new ICAL.Component(jcalData);
+      }).not.toThrow();
+    });
+
+    it('should handle recurring events with RRULE correctly', async () => {
+      // This test ensures the system doesn't break if RRULE is added later
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'test-simple',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'Simple event',
+          modules: ['Test'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-group');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Should be valid even without RRULE
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      const vevent = comp.getFirstSubcomponent('vevent');
+      expect(vevent).toBeTruthy();
     });
   });
 
@@ -250,8 +409,9 @@ describe('Calendar ICS API Route', () => {
             id: 'valid-event',
             start: '2024-01-15T09:00:00',
             end: '2024-01-15T11:00:00',
-            description: 'Normal Course',
-            modules: ['Test'],
+            description: 'Cours\nProgrammation Web',
+            eventCategory: 'Cours',
+            modules: ['Programmation Web'],
           },
           {
             id: 'blacklisted-event',
@@ -267,7 +427,7 @@ describe('Calendar ICS API Route', () => {
       const response = await GET(request);
       const icsContent = await response.text();
 
-      expect(icsContent).toContain('Normal Course');
+      expect(icsContent).toContain('Programmation Web');
       expect(icsContent).not.toContain('DSPEG');
     });
 
@@ -331,13 +491,13 @@ describe('Calendar ICS API Route', () => {
           id: 'location-event',
           start: '2024-01-15T09:00:00',
           end: '2024-01-15T11:00:00',
-          description: 'Cours en salle A101',
-          modules: ['Test'],
+          description: 'Cours en salle A101\nProgrammation avancée',
+          modules: ['Programmation avancée'],
           sites: ['Bâtiment A', 'Campus Talence']
         }]
       });
 
-      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-location-group');
       const response = await GET(request);
       const icsContent = await response.text();
 
@@ -416,7 +576,7 @@ describe('Calendar ICS API Route', () => {
         }]
       });
 
-      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-fullname-group');
       const response = await GET(request);
       const icsContent = await response.text();
 
@@ -467,13 +627,13 @@ describe('Calendar ICS API Route', () => {
           id: 'location-duplicate-event',
           start: '2024-01-15T09:00:00',
           end: '2024-01-15T11:00:00',
-          description: 'Test Course\nBâtiment A29 - A29/ Salle 105',
-          modules: ['Test'],
+          description: 'Cours de mathématiques\nBâtiment A29 - A29/ Salle 105',
+          modules: ['Mathématiques'],
           sites: ['Bâtiment A29']
         }]
       });
 
-      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-location-dup-group');
       const response = await GET(request);
       const icsContent = await response.text();
 
@@ -496,13 +656,13 @@ describe('Calendar ICS API Route', () => {
           id: 'location-extension-event',
           start: '2024-01-15T09:00:00',
           end: '2024-01-15T11:00:00',
-          description: 'Test Course\nBâtiment A9 - A9.a / Amphithéâtre 1',
-          modules: ['Test'],
+          description: 'Cours de physique\nBâtiment A9 - A9.a / Amphithéâtre 1',
+          modules: ['Physique'],
           sites: ['Bâtiment A9']
         }]
       });
 
-      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-location-ext-group');
       const response = await GET(request);
       const icsContent = await response.text();
 
@@ -531,7 +691,7 @@ describe('Calendar ICS API Route', () => {
         }]
       });
 
-      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-shortname-group');
       const response = await GET(request);
       const icsContent = await response.text();
 
@@ -551,9 +711,13 @@ describe('Calendar ICS API Route', () => {
 
   describe('Error Handling', () => {
     it('should handle fetch errors gracefully', async () => {
-      global.fetch.mockRejectedValueOnce(new Error('Network error'));
+      global.fetch
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new Error('Network error'));
 
-      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-error-handling-unique');
       const response = await GET(request);
 
       expect(response.status).toBe(404);

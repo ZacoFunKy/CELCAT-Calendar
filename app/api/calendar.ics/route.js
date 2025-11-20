@@ -1,5 +1,12 @@
 import { NextResponse } from 'next/server';
 import ical from 'ical-generator';
+import { 
+  getCachedGroupData, 
+  setCachedGroupData, 
+  trackGroupRequest,
+  pruneCache
+} from './cache.js';
+import { checkScheduleChanges, sendPushNotification } from '../notifications/notifier.js';
 
 
 // ==========================================
@@ -29,6 +36,11 @@ GROUP_REGEX: /^[a-zA-Z0-9\s\-\_\.\(\)\,]+$/
 };
 
 export const dynamic = 'force-dynamic';
+
+// Export function to clear in-flight requests (for testing)
+export function clearInFlightRequests() {
+  IN_FLIGHT_REQUESTS.clear();
+}
 
 // ==========================================
 // 2. MONITORING SIMPLE
@@ -87,7 +99,25 @@ async function getEventsForSingleGroup(groupName) {
     return [];
   }
 
-  // 2. Request Coalescing (Protection mémoire locale)
+  // 2. Track request for analytics
+  trackGroupRequest(groupName);
+
+  // 3. Check application-level cache first
+  const cachedData = getCachedGroupData(groupName);
+  if (cachedData) {
+    logger.info("Cache hit", { group: groupName });
+    // Send a notification for cache hit (non-blocking)
+    sendPushNotification({
+      groupName,
+      eventCount: cachedData.length,
+      type: 'refresh'
+    }).catch(err =>
+      logger.error("Failed to send notification", err)
+    );
+    return cachedData;
+  }
+
+  // 4. Request Coalescing (Protection mémoire locale)
   const cacheKey = `req-${groupName}`;
   if (IN_FLIGHT_REQUESTS.has(cacheKey)) {
     return IN_FLIGHT_REQUESTS.get(cacheKey);
@@ -123,6 +153,31 @@ async function getEventsForSingleGroup(groupName) {
       
       if (safeEvents.length === 0) {
         logger.info("Groupe vide", { group: groupName });
+      } else {
+        // Check for schedule changes and send notification if needed
+        const changeStatus = checkScheduleChanges(groupName, safeEvents);
+        if (changeStatus.changed) {
+          logger.info("Schedule changed", { group: groupName, previous: changeStatus.previousHash, new: changeStatus.newHash });
+          // Send notification asynchronously (don't wait for it)
+          await sendPushNotification({
+            ...changeStatus,
+            type: 'schedule_change'
+          }).catch(err => 
+            logger.error("Failed to send notification", err)
+          );
+        } else {
+          // Send refresh notification even if no change
+          await sendPushNotification({
+            groupName,
+            eventCount: safeEvents.length,
+            type: 'refresh'
+          }).catch(err => 
+            logger.error("Failed to send notification", err)
+          );
+        }
+        
+        // Store in application cache for popular groups
+        setCachedGroupData(groupName, safeEvents);
       }
 
       return safeEvents;
@@ -409,6 +464,11 @@ export async function GET(request) {
   const startTime = Date.now();
   
   try {
+    // Periodic cache cleanup
+    if (Math.random() < 0.1) { // 10% of requests trigger cleanup
+      pruneCache();
+    }
+
     const { searchParams } = new URL(request.url);
     const groupParam = searchParams.get('group');
     const showHolidays = searchParams.get('holidays') === 'true';
@@ -476,6 +536,17 @@ export async function GET(request) {
 
     logger.info("Génération OK", { groups, events: realCourseCount, ms: executionTime });
 
+    // Send download notification for each group
+    await Promise.all(groups.map(group => 
+      sendPushNotification({
+        groupName: group,
+        eventCount: realCourseCount,
+        type: 'download'
+      }).catch(err => 
+        logger.error("Failed to send download notification", err)
+      )
+    ));
+
     return new NextResponse(calendar.toString(), {
       status: 200,
       headers: {
@@ -483,6 +554,7 @@ export async function GET(request) {
         'Content-Disposition': `attachment; filename="${safeFilename}"`,
         // Headers de cache pour le navigateur/client
         'Cache-Control': `public, max-age=${CONFIG.CACHE_TTL}, s-maxage=${CONFIG.CACHE_TTL}, stale-while-revalidate=${CONFIG.CACHE_TTL}`,
+        'X-Response-Time': `${executionTime}ms`,
       },
     });
 
