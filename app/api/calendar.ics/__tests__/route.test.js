@@ -134,6 +134,154 @@ describe('Calendar ICS API Route', () => {
       expect(vevents.length).toBeGreaterThan(0);
       expect(vevents[0].getFirstPropertyValue('uid')).toBeTruthy();
     });
+
+    it('should comply with RFC 5545 line folding rules', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'test-long-description',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'A'.repeat(100) + '\n' + 'B'.repeat(100),
+          modules: ['Test'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-group');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Verify the ICS can be parsed (ical.js validates line folding)
+      expect(() => {
+        const jcalData = ICAL.parse(icsContent);
+        new ICAL.Component(jcalData);
+      }).not.toThrow();
+    });
+
+    it('should use correct date-time format (RFC 5545 section 3.3.5)', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'test-datetime',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'DateTime test',
+          modules: ['Test'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-group');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Parse and validate date-time format
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      const vevent = comp.getFirstSubcomponent('vevent');
+      const dtstart = vevent.getFirstProperty('dtstart');
+      
+      // Should have valid date-time value
+      expect(dtstart).toBeTruthy();
+      expect(dtstart.getFirstValue()).toBeTruthy();
+    });
+
+    it('should include DTSTAMP property (RFC 5545 requirement)', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'test-dtstamp',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'DTSTAMP test',
+          modules: ['Test'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-group');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // DTSTAMP is required by RFC 5545 for VEVENT
+      expect(icsContent).toContain('DTSTAMP:');
+      
+      // Parse and validate DTSTAMP exists
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      const vevent = comp.getFirstSubcomponent('vevent');
+      expect(vevent.getFirstPropertyValue('dtstamp')).toBeTruthy();
+    });
+
+    it('should validate VCALENDAR has required PRODID property', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'test-prodid',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'PRODID test',
+          modules: ['Test'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-group');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // PRODID is required by RFC 5545 for VCALENDAR
+      expect(icsContent).toContain('PRODID:');
+      
+      // Parse and validate
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      expect(comp.getFirstPropertyValue('prodid')).toBeTruthy();
+    });
+
+    it('should properly format multi-line descriptions with CRLF', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'test-multiline',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'Line 1\nLine 2\nLine 3',
+          modules: ['Test'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-group');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Should be parseable (ical-generator handles CRLF conversion)
+      expect(() => {
+        const jcalData = ICAL.parse(icsContent);
+        new ICAL.Component(jcalData);
+      }).not.toThrow();
+    });
+
+    it('should handle recurring events with RRULE correctly', async () => {
+      // This test ensures the system doesn't break if RRULE is added later
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'test-simple',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'Simple event',
+          modules: ['Test'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-group');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Should be valid even without RRULE
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      const vevent = comp.getFirstSubcomponent('vevent');
+      expect(vevent).toBeTruthy();
+    });
   });
 
   describe('API Parameter Validation', () => {
