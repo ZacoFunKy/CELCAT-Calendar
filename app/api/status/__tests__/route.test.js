@@ -1,0 +1,128 @@
+/**
+ * Tests for /api/status route
+ * Validates the status check endpoint functionality
+ */
+
+import { GET } from '../route';
+
+// Mock the fetch function
+global.fetch = jest.fn();
+
+describe('Status API Route', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.clearAllTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('should return online=true when Celcat is reachable', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+    });
+
+    const response = await GET();
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({ online: true });
+  });
+
+  it('should return online=false when Celcat is unreachable', async () => {
+    global.fetch.mockRejectedValueOnce(new Error('Network error'));
+
+    const response = await GET();
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({ online: false });
+  });
+
+  it('should return online=false when Celcat returns non-ok status', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+    });
+
+    const response = await GET();
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({ online: false });
+  });
+
+  it('should use HEAD request method', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+    });
+
+    await GET();
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://celcat.u-bordeaux.fr/Calendar/Home/Index',
+      expect.objectContaining({
+        method: 'HEAD',
+      })
+    );
+  });
+
+  it('should have a timeout mechanism', async () => {
+    jest.useFakeTimers();
+
+    // Create a promise that will be aborted
+    let abortCalled = false;
+    global.fetch.mockImplementation(() => {
+      return new Promise((resolve, reject) => {
+        const abortError = new Error('AbortError');
+        abortError.name = 'AbortError';
+        setTimeout(() => {
+          abortCalled = true;
+          reject(abortError);
+        }, 3000);
+      });
+    });
+
+    const responsePromise = GET();
+    
+    // Fast forward time past the timeout
+    jest.advanceTimersByTime(3100);
+
+    // Wait for the promise to resolve
+    await jest.runAllTimersAsync();
+    
+    const response = await responsePromise;
+    const json = await response.json();
+
+    expect(json.online).toBe(false);
+  }, 10000);
+
+  it('should include proper User-Agent header', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+    });
+
+    await GET();
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'User-Agent': expect.stringContaining('Status Check'),
+        }),
+      })
+    );
+  });
+
+  it('should handle AbortController signal', async () => {
+    const abortError = new Error('Aborted');
+    abortError.name = 'AbortError';
+    global.fetch.mockRejectedValueOnce(abortError);
+
+    const response = await GET();
+    const json = await response.json();
+
+    expect(json.online).toBe(false);
+  });
+});
