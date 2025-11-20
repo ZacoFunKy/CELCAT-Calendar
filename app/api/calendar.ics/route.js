@@ -265,8 +265,8 @@ function processEvent(event, { showHolidays }) {
     // Skip the line we used for summary
     if (line === summary) continue;
     
-    // Skip event type lines
-    if (/^(TD|TP|CM|Cours|Examen|Examens|Contrôle Continu)$/i.test(line)) {
+    // Skip event type lines including machine variants
+    if (/^(TD|TP|CM|Cours|Examen|Examens|Contrôle Continu|TD Machine|TP Machine)$/i.test(line)) {
       continue;
     }
     
