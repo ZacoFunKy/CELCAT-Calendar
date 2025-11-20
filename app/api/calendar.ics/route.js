@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
 import ical from 'ical-generator';
+import { 
+  getCachedGroupData, 
+  setCachedGroupData, 
+  trackGroupRequest,
+  pruneCache
+} from './cache.js';
 
 
 // ==========================================
@@ -87,7 +93,17 @@ async function getEventsForSingleGroup(groupName) {
     return [];
   }
 
-  // 2. Request Coalescing (Protection mémoire locale)
+  // 2. Track request for analytics
+  trackGroupRequest(groupName);
+
+  // 3. Check application-level cache first
+  const cachedData = getCachedGroupData(groupName);
+  if (cachedData) {
+    logger.info("Cache hit", { group: groupName });
+    return cachedData;
+  }
+
+  // 4. Request Coalescing (Protection mémoire locale)
   const cacheKey = `req-${groupName}`;
   if (IN_FLIGHT_REQUESTS.has(cacheKey)) {
     return IN_FLIGHT_REQUESTS.get(cacheKey);
@@ -123,6 +139,9 @@ async function getEventsForSingleGroup(groupName) {
       
       if (safeEvents.length === 0) {
         logger.info("Groupe vide", { group: groupName });
+      } else {
+        // Store in application cache for popular groups
+        setCachedGroupData(groupName, safeEvents);
       }
 
       return safeEvents;
@@ -409,6 +428,11 @@ export async function GET(request) {
   const startTime = Date.now();
   
   try {
+    // Periodic cache cleanup
+    if (Math.random() < 0.1) { // 10% of requests trigger cleanup
+      pruneCache();
+    }
+
     const { searchParams } = new URL(request.url);
     const groupParam = searchParams.get('group');
     const showHolidays = searchParams.get('holidays') === 'true';
@@ -483,6 +507,7 @@ export async function GET(request) {
         'Content-Disposition': `attachment; filename="${safeFilename}"`,
         // Headers de cache pour le navigateur/client
         'Cache-Control': `public, max-age=${CONFIG.CACHE_TTL}, s-maxage=${CONFIG.CACHE_TTL}, stale-while-revalidate=${CONFIG.CACHE_TTL}`,
+        'X-Response-Time': `${executionTime}ms`,
       },
     });
 

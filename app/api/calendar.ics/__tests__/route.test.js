@@ -9,6 +9,7 @@
 import { GET } from '../route';
 import { NextRequest } from 'next/server';
 import ICAL from 'ical.js';
+import { clearAllCaches } from '../cache.js';
 
 // Mock the fetch function
 global.fetch = jest.fn();
@@ -16,9 +17,14 @@ global.fetch = jest.fn();
 describe('Calendar ICS API Route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    clearAllCaches(); // Clear application cache between tests
     // Reset environment variables
     process.env.CELCAT_URL = 'https://celcat.u-bordeaux.fr/Calendar/Home/GetCalendarData';
     process.env.LOG_LEVEL = 'error'; // Reduce log noise during tests
+  });
+
+  afterEach(() => {
+    clearAllCaches(); // Also clear after each test
   });
 
   describe('ICS Format Validation', () => {
@@ -398,8 +404,9 @@ describe('Calendar ICS API Route', () => {
             id: 'valid-event',
             start: '2024-01-15T09:00:00',
             end: '2024-01-15T11:00:00',
-            description: 'Normal Course',
-            modules: ['Test'],
+            description: 'Cours\nProgrammation Web',
+            eventCategory: 'Cours',
+            modules: ['Programmation Web'],
           },
           {
             id: 'blacklisted-event',
@@ -415,7 +422,7 @@ describe('Calendar ICS API Route', () => {
       const response = await GET(request);
       const icsContent = await response.text();
 
-      expect(icsContent).toContain('Normal Course');
+      expect(icsContent).toContain('Programmation Web');
       expect(icsContent).not.toContain('DSPEG');
     });
 
@@ -479,8 +486,8 @@ describe('Calendar ICS API Route', () => {
           id: 'location-event',
           start: '2024-01-15T09:00:00',
           end: '2024-01-15T11:00:00',
-          description: 'Cours en salle A101',
-          modules: ['Test'],
+          description: 'Cours en salle A101\nProgrammation avancée',
+          modules: ['Programmation avancée'],
           sites: ['Bâtiment A', 'Campus Talence']
         }]
       });
@@ -615,8 +622,8 @@ describe('Calendar ICS API Route', () => {
           id: 'location-duplicate-event',
           start: '2024-01-15T09:00:00',
           end: '2024-01-15T11:00:00',
-          description: 'Test Course\nBâtiment A29 - A29/ Salle 105',
-          modules: ['Test'],
+          description: 'Cours de mathématiques\nBâtiment A29 - A29/ Salle 105',
+          modules: ['Mathématiques'],
           sites: ['Bâtiment A29']
         }]
       });
@@ -644,8 +651,8 @@ describe('Calendar ICS API Route', () => {
           id: 'location-extension-event',
           start: '2024-01-15T09:00:00',
           end: '2024-01-15T11:00:00',
-          description: 'Test Course\nBâtiment A9 - A9.a / Amphithéâtre 1',
-          modules: ['Test'],
+          description: 'Cours de physique\nBâtiment A9 - A9.a / Amphithéâtre 1',
+          modules: ['Physique'],
           sites: ['Bâtiment A9']
         }]
       });
@@ -699,7 +706,11 @@ describe('Calendar ICS API Route', () => {
 
   describe('Error Handling', () => {
     it('should handle fetch errors gracefully', async () => {
-      global.fetch.mockRejectedValueOnce(new Error('Network error'));
+      global.fetch
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new Error('Network error'));
 
       const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
       const response = await GET(request);

@@ -5,6 +5,7 @@
 
 import { GET } from '../route';
 import { NextRequest } from 'next/server';
+import { clearAllCaches } from '../cache.js';
 
 // Mock the fetch function
 global.fetch = jest.fn();
@@ -12,6 +13,7 @@ global.fetch = jest.fn();
 describe('Calendar API Performance Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    clearAllCaches(); // Clear application cache between tests
     process.env.CELCAT_URL = 'https://celcat.u-bordeaux.fr/Calendar/Home/GetCalendarData';
     process.env.LOG_LEVEL = 'error';
   });
