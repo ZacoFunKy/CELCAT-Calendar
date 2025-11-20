@@ -402,6 +402,151 @@ describe('Calendar ICS API Route', () => {
       
       expect(vevents.length).toBe(1); // Should only have one event
     });
+
+    it('should use full course name from description instead of module code', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'full-name-event',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'Conception des systèmes d\'information\nJean Dupont\nSalle A101',
+          eventCategory: 'Cours CM',
+          modules: ['4TYG503U Conception des SI'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Parse and check summary
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      const vevent = comp.getFirstSubcomponent('vevent');
+      const summary = vevent.getFirstPropertyValue('summary');
+
+      // Should use full name from description, not the module code
+      expect(summary).toContain('Conception des systèmes d\'information');
+      expect(summary).not.toContain('4TYG503U');
+      expect(summary).toMatch(/CM/);
+    });
+
+    it('should append professor name to event summary', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'professor-event',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'Conception des systèmes d\'information\nJean Dupont\nSalle A101',
+          eventCategory: 'Cours CM',
+          modules: ['Conception SI'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Parse and check summary
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      const vevent = comp.getFirstSubcomponent('vevent');
+      const summary = vevent.getFirstPropertyValue('summary');
+
+      // Should include professor name
+      expect(summary).toContain('Jean Dupont');
+      expect(summary).toMatch(/CM.*-.*Jean Dupont/);
+    });
+
+    it('should remove duplicate building names from location', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'location-duplicate-event',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'Test Course\nBâtiment A29 - A29/ Salle 105',
+          modules: ['Test'],
+          sites: ['Bâtiment A29']
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Parse and check location
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      const vevent = comp.getFirstSubcomponent('vevent');
+      const location = vevent.getFirstPropertyValue('location');
+
+      // Should not have duplicate "A29"
+      expect(location).toContain('Bâtiment A29/');
+      expect(location).toContain('Salle 105');
+      expect(location).not.toMatch(/A29\s*-\s*A29\//);
+    });
+
+    it('should remove duplicate building names with extensions from location', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'location-extension-event',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'Test Course\nBâtiment A9 - A9.a / Amphithéâtre 1',
+          modules: ['Test'],
+          sites: ['Bâtiment A9']
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Parse and check location
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      const vevent = comp.getFirstSubcomponent('vevent');
+      const location = vevent.getFirstPropertyValue('location');
+
+      // Should not have duplicate "A9 - A9.a", should be "Bâtiment A9.a"
+      expect(location).toContain('Bâtiment A9.a');
+      expect(location).toContain('Amphithéâtre 1');
+      expect(location).not.toMatch(/A9\s*-\s*A9\.a/);
+    });
+
+    it('should handle short course names like single words', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          id: 'short-name-event',
+          start: '2024-01-15T09:00:00',
+          end: '2024-01-15T11:00:00',
+          description: 'Cours\nFinance\n5CYG500S Info de Gestion\nSIGNORINI Charles\nA29/ Amphithéâtre F',
+          eventCategory: 'Cours CM',
+          modules: ['5CYG501U Finance'],
+        }]
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const response = await GET(request);
+      const icsContent = await response.text();
+
+      // Parse and check summary
+      const jcalData = ICAL.parse(icsContent);
+      const comp = new ICAL.Component(jcalData);
+      const vevent = comp.getFirstSubcomponent('vevent');
+      const summary = vevent.getFirstPropertyValue('summary');
+
+      // Should use "Finance" not the module code "5CYG501U Finance"
+      expect(summary).toContain('Finance');
+      expect(summary).toContain('SIGNORINI Charles');
+      expect(summary).not.toContain('5CYG501U');
+      expect(summary).toMatch(/CM.*-.*Finance.*-.*SIGNORINI Charles/);
+    });
   });
 
   describe('Error Handling', () => {

@@ -177,10 +177,125 @@ function processEvent(event, { showHolidays }) {
   const fullTextScan = ((event.eventCategory || "") + " " + cleanDescription).toUpperCase();
   const sitesText = (event.sites ? event.sites.join(', ') : '').toUpperCase();
 
+  // Extract course name and professor from description
+  const descriptionLines = cleanDescription.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  
   let summary = "";
-  if (event.modules && event.modules.length > 0) summary = event.modules[0];
-  else if (event.eventCategory) summary = event.eventCategory;
-  else summary = cleanDescription.split('\n')[0] || "Cours";
+  let professorName = "";
+  
+  // Look for full course name in description
+  // Full course name is typically a descriptive line (not a code)
+  // Avoid lines that look like module codes (e.g., "4TYG503U Com Pro")
+  for (const line of descriptionLines) {
+    // Skip lines that look like module codes (start with digits and letters followed by text)
+    if (/^\d[A-Z0-9]+\s+/i.test(line)) {
+      continue;
+    }
+    
+    // Skip common header/category words including event types
+    if (/^(Cours|TD|TP|CM|Examen|Examens|Contrôle Continu)$/i.test(line)) {
+      continue;
+    }
+    
+    // Skip lines that are clearly not course names
+    if (line.toLowerCase().includes('salle') || 
+        line.toLowerCase().includes('amphi') ||
+        line.toLowerCase().includes('bât') ||
+        (line.includes('/') && !line.includes('-'))) {  // Allow hyphens but not room separators
+      continue;
+    }
+    
+    const wordCount = line.split(' ').length;
+    const hasLowercase = /[a-zàâäçèéêëîïôöùûü]/.test(line);
+    
+    // Skip if it looks like a typical professor name pattern
+    // Professor names: "LASTNAME Firstname" or "LASTNAME-LASTNAME Firstname"
+    const words = line.split(/\s+/);
+    const firstWord = words[0] || "";
+    const secondWord = words[1] || "";
+    const isProfessorPattern = words.length === 2 && 
+                                /^[A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ][A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ-]+$/.test(firstWord) &&
+                                /^[A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ][a-zàâäçèéêëîïôöùûü]+$/.test(secondWord);
+    
+    if (isProfessorPattern) {
+      continue;  // This looks like "LASTNAME Firstname", skip it
+    }
+    
+    // Check if this could be a course name
+    if (line.length >= 18 || wordCount >= 3) {
+      // Longer names: prefer those with lowercase letters over mostly-uppercase (likely professor names)
+      const uppercaseWords = words.filter(word => word.length > 1 && word === word.toUpperCase());
+      const mostlyUppercase = uppercaseWords.length > words.length / 2;
+      
+      if (hasLowercase && !mostlyUppercase) {
+        summary = line;
+        break;
+      }
+    } else if (wordCount <= 2 && hasLowercase) {
+      // Shorter names (1-2 words like "Finance" or "Base données")
+      // Must have lowercase to distinguish from professor names
+      const hasLowercaseInWords = words.some(word => /[a-zàâäçèéêëîïôöùûü]/.test(word.substring(1)));
+      
+      if (hasLowercaseInWords || wordCount === 1) {
+        // Single word or has lowercase within words - likely a course name
+        summary = line;
+        break;
+      }
+    }
+  }
+  
+  // If no good summary from description, fall back to module name
+  // But strip the module code prefix (e.g., "5CYG501U Finance" -> "Finance")
+  if (!summary) {
+    if (event.modules && event.modules.length > 0) {
+      const moduleName = event.modules[0];
+      // Remove module code prefix (pattern: digits + letters + space)
+      summary = moduleName.replace(/^\d[A-Z0-9]+\s+/i, '').trim();
+      // If nothing left after stripping, use the original
+      if (!summary) summary = moduleName;
+    }
+    else if (event.eventCategory) summary = event.eventCategory;
+    else summary = descriptionLines[0] || "Cours";
+  }
+  
+  // Look for professor name in description
+  // Professor names are typically all uppercase or capitalized (e.g., "LOURME Alexandre" or "POURTIE R Frederic")
+  // Also handle names with hyphens like "BENOIS-PINEAU Jenny"
+  for (const line of descriptionLines) {
+    // Skip the line we used for summary
+    if (line === summary) continue;
+    
+    // Skip event type lines including machine variants
+    if (/^(TD|TP|CM|Cours|Examen|Examens|Contrôle Continu|TD Machine|TP Machine)$/i.test(line)) {
+      continue;
+    }
+    
+    // Look for lines that might be professor names
+    if (line.length > 3 && line.length < 60 && 
+        !line.toLowerCase().includes('salle') && 
+        !line.toLowerCase().includes('amphi') &&
+        !line.toLowerCase().includes('bât') &&
+        !line.toLowerCase().includes('cremi') &&
+        !line.match(/^\d/) &&
+        !line.includes('/')) {
+      
+      const words = line.split(/\s+/);
+      // Professor names usually have 2-4 words (e.g., "LOURME Alexandre", "POURTIE R Frederic", "BENOIS-PINEAU Jenny")
+      if (words.length >= 2 && words.length <= 4) {
+        // Check if it's mostly alphabetic (allowing for single letter middle names and hyphens)
+        const isName = words.every(word => 
+          /^[A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ][a-zàâäçèéêëîïôöùûü-]*$/i.test(word) || 
+          /^[A-ZÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ]$/i.test(word) // Single letter (middle initial)
+        );
+        
+        if (isName) {
+          professorName = line;
+          break;
+        }
+      }
+    }
+  }
+  
   summary = cleanDescriptionText(summary);
 
   const isHoliday = (event.eventCategory && event.eventCategory.includes('Vacances')) || 
@@ -232,9 +347,13 @@ function processEvent(event, { showHolidays }) {
       summary = `${prefix} - ${summary.replace(/^(TD|TP)\s*-?\s*/i, '')}`;
     }
   }
+  
+  // Append professor name if found
+  if (professorName) {
+    summary = `${summary} - ${professorName}`;
+  }
 
   let finalLocation = cleanDescriptionText(event.sites ? event.sites.join(', ') : '');
-  const descriptionLines = cleanDescription.split('\n');
   const roomRegex = /(?:salle\s+\w+|amphi(?:théâtre)?\s+\w+|bât\.|a\d{2}\/|cremi)/i;
   const specificRoomLine = descriptionLines.find(line => roomRegex.test(line));
 
@@ -247,6 +366,22 @@ function processEvent(event, { showHolidays }) {
     } else {
       finalLocation = cleanRoom;
     }
+  }
+  
+  // Clean up duplicate building names in location
+  // Examples:
+  // - "Bâtiment A29 - A29/ Salle 105" -> "Bâtiment A29/ Salle 105"
+  // - "Bâtiment A9 - A9.a / Amphithéâtre 1" -> "Bâtiment A9.a / Amphithéâtre 1"
+  if (finalLocation) {
+    // Pattern to match "Bâtiment XYZ - XYZ/" and replace with "Bâtiment XYZ/"
+    finalLocation = finalLocation.replace(/Bâtiment\s+([A-Z]\d+)\s*-\s*\1\//gi, 'Bâtiment $1/');
+    
+    // Pattern to match "Bâtiment XYZ - XYZ.abc" and replace with "Bâtiment XYZ.abc"
+    finalLocation = finalLocation.replace(/Bâtiment\s+([A-Z]\d+)\s*-\s*\1(\.[a-z]+)/gi, 'Bâtiment $1$2');
+    
+    // More general pattern for building names without "Bâtiment" prefix
+    finalLocation = finalLocation.replace(/([A-Z]\d+)\s*-\s*\1\//gi, '$1/');
+    finalLocation = finalLocation.replace(/([A-Z]\d+)\s*-\s*\1(\.[a-z]+)/gi, '$1$2');
   }
 
   if (event.allDay && !event.end) {
