@@ -184,7 +184,7 @@ function processEvent(event, { showHolidays }) {
   let professorName = "";
   
   // Look for full course name in description
-  // Full course name is typically a longer descriptive line (not a code)
+  // Full course name is typically a descriptive line (not a code)
   // Avoid lines that look like module codes (e.g., "4TYG503U Com Pro")
   for (const line of descriptionLines) {
     // Skip lines that look like module codes (start with digits and letters followed by short words)
@@ -192,31 +192,49 @@ function processEvent(event, { showHolidays }) {
       continue;
     }
     
-    // Look for a substantial course name
-    // Must be either:
-    // - At least 18 characters long (lowered to catch "Systèmes comptables"), OR
-    // - Have 3+ words (to catch multi-word course names)
+    // Skip common header/category words
+    if (/^(Cours|TD|TP|CM|Examen)$/i.test(line)) {
+      continue;
+    }
+    
+    // Look for course name
+    // Can be:
+    // - A substantial name (≥18 chars OR ≥3 words), OR
+    // - A shorter name (even 1 word like "Finance") if it has lowercase letters
     const wordCount = line.split(' ').length;
+    const hasLowercase = /[a-zàâäçèéêëîïôöùûü]/.test(line);
+    
+    // Skip lines that are clearly not course names
+    if (line.toLowerCase().includes('salle') || 
+        line.toLowerCase().includes('amphi') ||
+        line.toLowerCase().includes('bât') ||
+        line.includes('/')) {
+      continue;
+    }
+    
+    // Check if this could be a course name
     if (line.length >= 18 || wordCount >= 3) {
-      // Additional check: avoid lines that are clearly not course names
-      if (!line.toLowerCase().includes('salle') && 
-          !line.toLowerCase().includes('amphi') &&
-          !line.toLowerCase().includes('bât') &&
-          !line.match(/^(TD|TP|CM)\b/i) &&
-          !line.includes('/')) {
-        
-        // Extra validation: prefer lines with lowercase letters (course names)
-        // over lines with mostly uppercase (likely professor names)
-        // Professor names like "POURTIE R Frederic" have uppercase first letters
-        const hasLowercase = /[a-zàâäçèéêëîïôöùûü]/.test(line);
-        const words = line.split(/\s+/);
-        const mostlyUppercase = words.filter(word => word.length > 1 && word === word.toUpperCase()).length > words.length / 2;
-        
-        if (hasLowercase && !mostlyUppercase) {
-          // This looks like a course name (has lowercase, not mostly uppercase)
-          summary = line;
-          break;
-        }
+      // Longer names: prefer those with lowercase letters over mostly-uppercase (likely professor names)
+      const words = line.split(/\s+/);
+      const mostlyUppercase = words.filter(word => word.length > 1 && word === word.toUpperCase()).length > words.length / 2;
+      
+      if (hasLowercase && !mostlyUppercase) {
+        summary = line;
+        break;
+      }
+    } else if (wordCount <= 2 && hasLowercase) {
+      // Shorter names (1-2 words like "Finance" or "Base données")
+      // Must have lowercase to distinguish from professor names
+      const words = line.split(/\s+/);
+      
+      // Make sure it's not a professor name (which typically has 2+ words with first letters uppercase)
+      // Course names usually have lowercase letters within words
+      const hasLowercaseInWords = words.some(word => /[a-zàâäçèéêëîïôöùûü]/.test(word.substring(1)));
+      
+      if (hasLowercaseInWords || wordCount === 1) {
+        // Single word or has lowercase within words - likely a course name
+        summary = line;
+        break;
       }
     }
   }
