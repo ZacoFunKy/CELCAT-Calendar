@@ -267,21 +267,7 @@ export default function AdminDashboard() {
           </>
         )}
 
-        {!stats && !loading && authenticated === false && (
-          <div className="max-w-2xl mx-auto">
-            <div className="bg-blue-50/80 dark:bg-blue-900/20 backdrop-blur-xl border border-blue-200 dark:border-blue-800 rounded-2xl p-6">
-              <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-2">
-                Comment utiliser ce dashboard
-              </h3>
-              <ul className="list-disc list-inside text-blue-800 dark:text-blue-200 space-y-2">
-                <li>Définissez la variable <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded">ADMIN_API_KEY</code></li>
-                <li>Entrez votre clé API ci-dessus pour accéder aux statistiques</li>
-                <li>Consultez les groupes populaires et les statistiques d'utilisation</li>
-                <li>Surveillez les performances et les tendances de l'API</li>
-              </ul>
-            </div>
-          </div>
-        )}
+      
       </div>
 
       {/* Animations */}

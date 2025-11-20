@@ -98,7 +98,8 @@ export async function sendPushNotification(notification) {
   }));
   
   // If webhook URL is configured, send notification there
-  const webhookUrl = process.env.NOTIFICATION_WEBHOOK_URL;
+console.log('DEBUG - URL:', process.env.NOTIFICATION_WEBHOOK_URL);
+const webhookUrl = process.env.NOTIFICATION_WEBHOOK_URL;
   if (webhookUrl) {
     try {
       const response = await fetch(webhookUrl, {

@@ -101,6 +101,14 @@ async function getEventsForSingleGroup(groupName) {
   const cachedData = getCachedGroupData(groupName);
   if (cachedData) {
     logger.info("Cache hit", { group: groupName });
+    //Send a notification for cache hit
+    await sendPushNotification({
+      groupName,
+      eventCount: cachedData.length,
+      type: 'refresh'
+    }).catch(err =>
+      logger.error("Failed to send notification", err)
+    );
     return cachedData;
   }
 
@@ -146,7 +154,7 @@ async function getEventsForSingleGroup(groupName) {
         if (changeStatus.changed) {
           logger.info("Schedule changed", { group: groupName, previous: changeStatus.previousHash, new: changeStatus.newHash });
           // Send notification asynchronously (don't wait for it)
-          sendPushNotification({
+          await sendPushNotification({
             ...changeStatus,
             type: 'schedule_change'
           }).catch(err => 
@@ -154,7 +162,7 @@ async function getEventsForSingleGroup(groupName) {
           );
         } else {
           // Send refresh notification even if no change
-          sendPushNotification({
+          await sendPushNotification({
             groupName,
             eventCount: safeEvents.length,
             type: 'refresh'
@@ -524,15 +532,15 @@ export async function GET(request) {
     logger.info("Génération OK", { groups, events: realCourseCount, ms: executionTime });
 
     // Send download notification for each group
-    for (const group of groups) {
+    await Promise.all(groups.map(group => 
       sendPushNotification({
         groupName: group,
         eventCount: realCourseCount,
         type: 'download'
       }).catch(err => 
         logger.error("Failed to send download notification", err)
-      );
-    }
+      )
+    ));
 
     return new NextResponse(calendar.toString(), {
       status: 200,
