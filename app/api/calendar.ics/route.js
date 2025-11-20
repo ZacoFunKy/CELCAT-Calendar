@@ -6,6 +6,7 @@ import {
   trackGroupRequest,
   pruneCache
 } from './cache.js';
+import { checkScheduleChanges, sendPushNotification } from '../notifications/notifier.js';
 
 
 // ==========================================
@@ -140,6 +141,16 @@ async function getEventsForSingleGroup(groupName) {
       if (safeEvents.length === 0) {
         logger.info("Groupe vide", { group: groupName });
       } else {
+        // Check for schedule changes and send notification if needed
+        const changeStatus = checkScheduleChanges(groupName, safeEvents);
+        if (changeStatus.changed) {
+          logger.info("Schedule changed", { group: groupName, previous: changeStatus.previousHash, new: changeStatus.newHash });
+          // Send notification asynchronously (don't wait for it)
+          sendPushNotification(changeStatus).catch(err => 
+            logger.error("Failed to send notification", err)
+          );
+        }
+        
         // Store in application cache for popular groups
         setCachedGroupData(groupName, safeEvents);
       }

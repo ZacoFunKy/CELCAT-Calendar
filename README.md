@@ -14,7 +14,18 @@ Il est conçu pour être compatible avec Google Calendar, Apple Calendar et Outl
   - Affiche les vacances sous forme de bandeau "Toute la journée" (All Day) pour ne pas encombrer la vue semaine.
   - Option pour masquer complètement les vacances via un paramètre d'URL.
 - **Détection des salles** : Extrait et nettoie les informations de lieu (Amphi, Salles, Bâtiments).
-- **Performance** : Utilise le cache de Next.js (revalidation toutes les heures) pour réduire la charge sur les serveurs de l'université.
+- **Performance** : 
+  - Utilise le cache de Next.js (revalidation toutes les heures) pour réduire la charge sur les serveurs de l'université.
+  - Cache applicatif intelligent pour les groupes fréquemment demandés avec éviction LRU.
+  - Tracking des requêtes et statistiques d'utilisation.
+- **Monitoring et Analytics** :
+  - Dashboard administrateur pour visualiser les statistiques d'utilisation.
+  - API de statistiques pour monitorer les performances.
+  - Tracking des groupes populaires et des tendances d'utilisation.
+- **Notifications Push** :
+  - Détection automatique des changements d'emploi du temps.
+  - Notifications via logs et webhooks (Slack, Discord, etc.).
+  - Configuration flexible pour différents canaux de notification.
 
 ## 🚀 Comment l'utiliser
 
@@ -111,6 +122,33 @@ const CONFIG = {
   // ...
 };
 ```
+
+### Variables d'environnement
+
+- `ADMIN_API_KEY`: Clé API pour l'accès administrateur au dashboard et aux statistiques
+- `NOTIFICATION_WEBHOOK_URL`: URL de webhook pour recevoir les notifications de changements d'emploi du temps (optionnel)
+- `CELCAT_URL`: URL de l'API Celcat (par défaut: https://celcat.u-bordeaux.fr/Calendar/Home/GetCalendarData)
+- `CACHE_TTL`: Durée du cache en secondes (par défaut: 3600)
+- `LOG_LEVEL`: Niveau de log (error, warn, info)
+
+## 📊 Dashboard Administrateur
+
+Un dashboard administrateur est disponible à l'adresse `/admin/dashboard` pour:
+- Visualiser les statistiques d'utilisation
+- Voir les groupes les plus demandés
+- Monitorer les performances de l'API
+- Accéder aux logs détaillés
+
+Pour y accéder, définissez la variable `ADMIN_API_KEY` et utilisez cette clé pour vous authentifier.
+
+## 🔔 Notifications Push
+
+Le système détecte automatiquement les changements dans les emplois du temps et envoie des notifications:
+- Notifications via les logs de l'application
+- Support des webhooks pour intégrations externes (Slack, Discord, etc.)
+- Configuration via `NOTIFICATION_WEBHOOK_URL`
+
+Pour tester les notifications: `POST /api/notifications/test` (nécessite authentification admin)
 ## 📦 Déploiement
 
 Ce projet est optimisé pour être déployé sur Vercel (recommandé pour Next.js).
