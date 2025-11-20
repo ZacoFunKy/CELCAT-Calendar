@@ -6,10 +6,11 @@
  * 3. Event processing logic (filtering, formatting)
  */
 
-import { GET } from '../route';
+import { GET, clearInFlightRequests } from '../route';
 import { NextRequest } from 'next/server';
 import ICAL from 'ical.js';
 import { clearAllCaches } from '../cache.js';
+import { clearScheduleHistory } from '../../notifications/notifier.js';
 
 // Mock the fetch function
 global.fetch = jest.fn();
@@ -18,6 +19,8 @@ describe('Calendar ICS API Route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     clearAllCaches(); // Clear application cache between tests
+    clearScheduleHistory(); // Clear notification history between tests
+    clearInFlightRequests(); // Clear in-flight requests between tests
     // Reset environment variables
     process.env.CELCAT_URL = 'https://celcat.u-bordeaux.fr/Calendar/Home/GetCalendarData';
     process.env.LOG_LEVEL = 'error'; // Reduce log noise during tests
@@ -25,6 +28,8 @@ describe('Calendar ICS API Route', () => {
 
   afterEach(() => {
     clearAllCaches(); // Also clear after each test
+    clearScheduleHistory();
+    clearInFlightRequests();
   });
 
   describe('ICS Format Validation', () => {
@@ -492,7 +497,7 @@ describe('Calendar ICS API Route', () => {
         }]
       });
 
-      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-location-group');
       const response = await GET(request);
       const icsContent = await response.text();
 
@@ -571,7 +576,7 @@ describe('Calendar ICS API Route', () => {
         }]
       });
 
-      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-fullname-group');
       const response = await GET(request);
       const icsContent = await response.text();
 
@@ -628,7 +633,7 @@ describe('Calendar ICS API Route', () => {
         }]
       });
 
-      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-location-dup-group');
       const response = await GET(request);
       const icsContent = await response.text();
 
@@ -657,7 +662,7 @@ describe('Calendar ICS API Route', () => {
         }]
       });
 
-      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-location-ext-group');
       const response = await GET(request);
       const icsContent = await response.text();
 
@@ -686,7 +691,7 @@ describe('Calendar ICS API Route', () => {
         }]
       });
 
-      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-shortname-group');
       const response = await GET(request);
       const icsContent = await response.text();
 
@@ -712,7 +717,7 @@ describe('Calendar ICS API Route', () => {
         .mockRejectedValueOnce(new Error('Network error'))
         .mockRejectedValueOnce(new Error('Network error'));
 
-      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test');
+      const request = new NextRequest('http://localhost:3000/api/calendar.ics?group=test-error-handling-unique');
       const response = await GET(request);
 
       expect(response.status).toBe(404);

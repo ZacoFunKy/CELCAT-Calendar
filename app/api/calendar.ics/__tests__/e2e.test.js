@@ -3,10 +3,11 @@
  * These tests validate the complete flow from request to response
  */
 
-import { GET } from '../route';
+import { GET, clearInFlightRequests } from '../route';
 import { NextRequest } from 'next/server';
 import ICAL from 'ical.js';
 import { clearAllCaches } from '../cache.js';
+import { clearScheduleHistory } from '../../notifications/notifier.js';
 
 // Mock the fetch function
 global.fetch = jest.fn();
@@ -15,6 +16,8 @@ describe('Calendar API E2E Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     clearAllCaches(); // Clear application cache between tests
+    clearScheduleHistory(); // Clear notification history between tests
+    clearInFlightRequests(); // Clear in-flight requests between tests
     process.env.CELCAT_URL = 'https://celcat.u-bordeaux.fr/Calendar/Home/GetCalendarData';
     process.env.LOG_LEVEL = 'error';
   });

@@ -3,9 +3,10 @@
  * These tests validate that the API responds within acceptable time limits
  */
 
-import { GET } from '../route';
+import { GET, clearInFlightRequests } from '../route';
 import { NextRequest } from 'next/server';
 import { clearAllCaches } from '../cache.js';
+import { clearScheduleHistory } from '../../notifications/notifier.js';
 
 // Mock the fetch function
 global.fetch = jest.fn();
@@ -14,6 +15,8 @@ describe('Calendar API Performance Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     clearAllCaches(); // Clear application cache between tests
+    clearScheduleHistory(); // Clear notification history between tests
+    clearInFlightRequests(); // Clear in-flight requests between tests
     process.env.CELCAT_URL = 'https://celcat.u-bordeaux.fr/Calendar/Home/GetCalendarData';
     process.env.LOG_LEVEL = 'error';
   });

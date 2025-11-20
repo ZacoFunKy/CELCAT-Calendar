@@ -37,6 +37,11 @@ GROUP_REGEX: /^[a-zA-Z0-9\s\-\_\.\(\)\,]+$/
 
 export const dynamic = 'force-dynamic';
 
+// Export function to clear in-flight requests (for testing)
+export function clearInFlightRequests() {
+  IN_FLIGHT_REQUESTS.clear();
+}
+
 // ==========================================
 // 2. MONITORING SIMPLE
 // ==========================================
@@ -101,8 +106,8 @@ async function getEventsForSingleGroup(groupName) {
   const cachedData = getCachedGroupData(groupName);
   if (cachedData) {
     logger.info("Cache hit", { group: groupName });
-    //Send a notification for cache hit
-    await sendPushNotification({
+    // Send a notification for cache hit (non-blocking)
+    sendPushNotification({
       groupName,
       eventCount: cachedData.length,
       type: 'refresh'
