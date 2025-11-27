@@ -14,13 +14,13 @@ function hashSchedule(events) {
   if (!events || events.length === 0) {
     return 'empty';
   }
-  
+
   // Create a simple hash based on event IDs, start times, and descriptions
   const eventSignature = events
     .map(e => `${e.id}-${e.start}-${e.description}`)
     .sort()
     .join('|');
-  
+
   // Simple hash function
   let hash = 0;
   for (let i = 0; i < eventSignature.length; i++) {
@@ -28,7 +28,7 @@ function hashSchedule(events) {
     hash = ((hash << 5) - hash) + char;
     hash = hash & hash; // Convert to 32bit integer
   }
-  
+
   return hash.toString(36);
 }
 
@@ -38,7 +38,7 @@ function hashSchedule(events) {
 export function checkScheduleChanges(groupName, events) {
   const newHash = hashSchedule(events);
   const previousHash = scheduleHashes.get(groupName);
-  
+
   if (previousHash && previousHash !== newHash) {
     // Schedule has changed!
     return {
@@ -49,10 +49,10 @@ export function checkScheduleChanges(groupName, events) {
       eventCount: events.length,
     };
   }
-  
+
   // Store current hash
   scheduleHashes.set(groupName, newHash);
-  
+
   return {
     changed: false,
     groupName,
@@ -66,7 +66,7 @@ export function checkScheduleChanges(groupName, events) {
  */
 export async function sendPushNotification(notification) {
   const { groupName, eventCount, type = 'download' } = notification;
-  
+
   // Determine message based on notification type
   let message;
   let emoji;
@@ -85,8 +85,9 @@ export async function sendPushNotification(notification) {
       emoji = '📥';
       break;
   }
-  
-  // Log for developer
+
+  // Log for developer (Commented out for production cleanup)
+  /*
   console.log('🔔 PUSH NOTIFICATION:', JSON.stringify({
     type,
     message,
@@ -96,8 +97,10 @@ export async function sendPushNotification(notification) {
       timestamp: new Date().toISOString(),
     }
   }));
-  
-  // If webhook URL is configured, send notification there
+  */
+
+  // Webhook logic removed per user request
+  /*
   const webhookUrl = process.env.NOTIFICATION_WEBHOOK_URL;
   if (webhookUrl) {
     try {
@@ -122,7 +125,8 @@ export async function sendPushNotification(notification) {
       console.error('Failed to send webhook notification:', error);
     }
   }
-  
+  */
+
   return true;
 }
 
