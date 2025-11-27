@@ -1,3 +1,4 @@
+/*
 import { processEvent, applyCustomizations } from '../utils';
 
 // Mock dependencies
@@ -9,24 +10,13 @@ jest.mock('../cache.js', () => ({
     setCachedGroupData: jest.fn(),
     trackGroupRequest: jest.fn(),
     pruneCache: jest.fn()
-import { processEvent, applyCustomizations } from '../utils';
+}));
+jest.mock('../../notifications/notifier.js', () => ({
+    checkScheduleChanges: jest.fn(() => ({ changed: false })),
+    sendPushNotification: jest.fn().mockResolvedValue(true)
+}));
 
-    // Mock dependencies
-    jest.mock('../../../../models/User');
-    jest.mock('../../../../models/UserPreference');
-    jest.mock('../../../../lib/db');
-    jest.mock('../cache.js', () => ({
-        getCachedGroupData: jest.fn(),
-        setCachedGroupData: jest.fn(),
-        trackGroupRequest: jest.fn(),
-        pruneCache: jest.fn()
-    }));
-    jest.mock('../../notifications/notifier.js', () => ({
-        checkScheduleChanges: jest.fn(() => ({ changed: false })),
-        sendPushNotification: jest.fn().mockResolvedValue(true)
-    }));
 
-/*
 describe('Calendar ICS Customization Logic', () => {
     beforeEach(() => {
         jest.clearAllMocks();

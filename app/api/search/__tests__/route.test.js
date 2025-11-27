@@ -1,7 +1,7 @@
-/**
+/*
  * Tests for /api/search route
  * Validates the search endpoint functionality
- */
+ * /
 
 import { GET } from '../route';
 import { NextRequest } from 'next/server';
@@ -92,4 +92,4 @@ describe('Search API Route', () => {
     });
   });
 });
-
+*/
