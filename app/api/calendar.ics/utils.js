@@ -23,7 +23,7 @@ export const CONFIG = {
     INITIAL_BACKOFF: 500,
     TIMEOUT: parseInt(process.env.API_TIMEOUT || '6000'),
     CACHE_TTL: parseInt(process.env.CACHE_TTL || '3600'), // 1 heure
-    GROUP_REGEX: /^[a-zA-Z0-9\s\-\_\.\(\)\,]+$/
+    GROUP_REGEX: /^[a-zA-Z0-9\s\-\_\.\(\)\,àâäçèéêëîïôöùûüÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ]+$/
 };
 
 // ==========================================
