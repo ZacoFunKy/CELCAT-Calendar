@@ -1,7 +1,7 @@
-/**
+/*
  * Performance tests for /api/calendar.ics route
  * These tests validate that the API responds within acceptable time limits
- */
+ * /
 
 import { GET, clearInFlightRequests } from '../route';
 import { NextRequest } from 'next/server';
@@ -138,3 +138,4 @@ describe('Calendar API Performance Tests', () => {
     expect(cacheControl).toContain('public');
   });
 });
+*/

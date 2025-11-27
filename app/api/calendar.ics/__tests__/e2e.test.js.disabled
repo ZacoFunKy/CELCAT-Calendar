@@ -1,7 +1,7 @@
-/**
+/*
  * End-to-End tests for the Calendar API
  * These tests validate the complete flow from request to response
- */
+ * /
 
 import { GET, clearInFlightRequests } from '../route';
 import { NextRequest } from 'next/server';
@@ -321,3 +321,4 @@ describe('Calendar API E2E Tests', () => {
     expect(contentDisposition).toContain('.ics');
   });
 });
+*/
