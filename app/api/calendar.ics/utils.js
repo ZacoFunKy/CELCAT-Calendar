@@ -226,7 +226,7 @@ export function processEvent(event, { showHolidays }) {
         summary: summary,
         description: cleanDescription,
         location: finalLocation,
-        eventType: prefix,
+        eventType: prefix || null,
         isHoliday: false,
         allDay: false
     };

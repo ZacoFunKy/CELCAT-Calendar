@@ -1,3 +1,8 @@
+/**
+ * Calendar ICS API Route Handler
+ * Generates ICS calendar files from CELCAT data with caching, personalization, and notifications
+ */
+
 import { NextResponse } from 'next/server';
 import ical from 'ical-generator';
 import {
@@ -14,11 +19,20 @@ import UserPreference from '../../../models/UserPreference';
 
 import { CONFIG, getFullAcademicYear, processEvent, applyCustomizations } from './utils.js';
 
+/**
+ * Logger utility for consistent logging across the application
+ */
 const logger = {
   info: (msg, data) => console.log(`[INFO] ${msg}`, data ? JSON.stringify(data) : ''),
   error: (msg, err) => console.error(`[ERROR] ${msg}`, err)
 };
 
+/**
+ * Fetches group schedule data from CELCAT API with retry logic
+ * @param {string} groupName - The group identifier
+ * @returns {Promise<Array>} Array of events from CELCAT
+ * @throws {Error} If all retry attempts fail
+ */
 async function fetchGroupData(groupName) {
   const { start, end } = getFullAcademicYear();
   const formData = new URLSearchParams();
@@ -49,13 +63,21 @@ async function fetchGroupData(groupName) {
   }
 }
 
-// In-flight requests deduplication
+// In-flight requests deduplication to prevent duplicate fetches
 const inFlightRequests = new Map();
 
+/**
+ * Clears all in-flight request promises (mainly for testing)
+ */
 export function clearInFlightRequests() {
   inFlightRequests.clear();
 }
 
+/**
+ * Fetches events for a single group with caching and deduplication
+ * @param {string} groupName - The group identifier
+ * @returns {Promise<Array>} Array of processed events
+ */
 async function getEventsForSingleGroup(groupName) {
   if (!CONFIG.GROUP_REGEX.test(groupName)) {
     logger.error(`Invalid group name: ${groupName}`);
@@ -80,8 +102,8 @@ async function getEventsForSingleGroup(groupName) {
       const events = await fetchGroupData(groupName);
       setCachedGroupData(groupName, events);
 
-      // Notify if schedule changed (async)
-      checkScheduleChanges(groupName, events).catch(err =>
+      // Notify if schedule changed (async, don't wait)
+      Promise.resolve(checkScheduleChanges(groupName, events)).catch(err =>
         logger.error("Failed to check schedule changes", err)
       );
 
@@ -98,6 +120,19 @@ async function getEventsForSingleGroup(groupName) {
   return fetchPromise;
 }
 
+/**
+ * GET handler for calendar.ics API endpoint
+ * Generates ICS calendar files from CELCAT data with support for:
+ * - Multiple groups
+ * - User authentication and preferences
+ * - Caching and deduplication
+ * - Event customization (hiding, renaming, color coding)
+ * - Holiday filtering
+ * - JSON output format
+ * 
+ * @param {NextRequest} request - The incoming request object
+ * @returns {Promise<NextResponse>} ICS file or JSON response
+ */
 export async function GET(request) {
   const startTime = Date.now();
   let requestHiddenRules = [];
@@ -282,25 +317,30 @@ export async function GET(request) {
 
       if (!customizedEvent) return; // Hidden by rule
 
-      if (!event.isHoliday) realCourseCount++;
+      if (!customizedEvent.isHoliday) realCourseCount++;
 
-      const eventType = event.eventType || 'Other';
-      const color = colorMap.get(eventType);
+      const eventType = customizedEvent.eventType && customizedEvent.eventType.trim() ? customizedEvent.eventType.trim() : null;
+      const color = eventType ? colorMap.get(eventType) : null;
 
       const icalEvent = calendar.createEvent({
-        id: event.id,
-        start: event.start,
-        end: event.end,
-        summary: event.summary,
-        description: event.description,
-        location: event.location,
+        id: customizedEvent.id,
+        start: customizedEvent.start,
+        end: customizedEvent.end,
+        summary: customizedEvent.summary,
+        description: customizedEvent.description,
+        location: customizedEvent.location,
         timezone: CONFIG.timezone,
-        allDay: event.allDay
+        allDay: customizedEvent.allDay
       });
 
-      // Add categories for coloring (standard way)
-      if (eventType) {
-        icalEvent.categories([eventType]);
+      // Add categories for coloring (standard way) - only if eventType is valid
+      if (eventType && eventType.length > 0) {
+        try {
+          icalEvent.categories([eventType]);
+        } catch (err) {
+          // Log error but continue - categories are optional
+          logger.error(`Failed to set category for eventType: "${eventType}"`, err);
+        }
       }
 
       // Add custom color property if available (best effort for some clients)
@@ -323,11 +363,11 @@ export async function GET(request) {
 
     // Send download notification for each group
     await Promise.all(groups.map(group =>
-      sendPushNotification({
+      Promise.resolve(sendPushNotification({
         groupName: group,
         eventCount: realCourseCount,
         type: 'download'
-      }).catch(err =>
+      })).catch(err =>
         logger.error("Failed to send download notification", err)
       )
     ));
