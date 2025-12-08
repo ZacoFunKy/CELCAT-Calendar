@@ -8,11 +8,12 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import frLocale from '@fullcalendar/core/locales/fr';
-import Navbar from '../../components/Navbar';
 import EventDetailsModal from '../../components/EventDetailsModal';
 import { useAppTheme } from '../../hooks/useAppTheme';
 
 // Components
+import Navbar from '../../components/Navbar';
+import SidebarNav from '../../components/SidebarNav';
 import GroupSelector from '../../components/dashboard/GroupSelector';
 import CustomizationPanel from '../../components/dashboard/CustomizationPanel';
 import HiddenEventsPanel from '../../components/dashboard/HiddenEventsPanel';
@@ -42,12 +43,34 @@ export default function DashboardPage() {
     const [copySuccess, setCopySuccess] = useState('');
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [activeCard, setActiveCard] = useState('groups'); // Default open card
+    const [statusMessage, setStatusMessage] = useState('');
 
     // Modal State
     const [selectedEvent, setSelectedEvent] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     const calendarRef = useRef(null);
+
+    const formatGroupValue = (group) => {
+        if (!group) return '';
+        if (typeof group === 'object') {
+            const id = group.id || group.text || '';
+            const label = group.text || group.id || '';
+            return id && label ? `${id}::${label}` : label || id;
+        }
+        return group;
+    };
+
+    const getGroupLabelFromValue = (value) => {
+        if (!value) return '';
+        if (typeof value !== 'string') return String(value);
+        if (value.includes('::')) {
+            const [, ...rest] = value.split('::');
+            const label = rest.join('::');
+            return label || value.split('::')[0];
+        }
+        return value;
+    };
 
     // Fetch preferences on load
     useEffect(() => {
@@ -90,6 +113,7 @@ export default function DashboardPage() {
     const fetchEvents = async () => {
         if (!calendarToken) return;
         try {
+            setStatusMessage('');
             const res = await fetch(`/api/calendar.ics?token=${calendarToken}&format=json&holidays=${showHolidays}`);
             if (res.ok) {
                 const data = await res.json();
@@ -145,9 +169,18 @@ export default function DashboardPage() {
                     return { ...event, title, backgroundColor, borderColor };
                 });
                 setEvents(formattedEvents);
+                if ((data.events || []).length === 0) {
+                    setStatusMessage('Aucun cours trouvé pour les groupes sélectionnés.');
+                }
+            } else {
+                const error = await res.json().catch(() => ({}));
+                setStatusMessage(error.error || 'Service indisponible (CELCAT indisponible ou requête invalide).');
+                setEvents([]);
             }
         } catch (error) {
             console.error('Error fetching events:', error);
+            setStatusMessage('Service indisponible (CELCAT indisponible ou requête invalide).');
+            setEvents([]);
         }
     };
 
@@ -169,9 +202,11 @@ export default function DashboardPage() {
 
     const handleAddGroup = (groupToAdd) => {
         if (!groupToAdd) return;
-        const groupName = typeof groupToAdd === 'object' ? groupToAdd.text : groupToAdd;
+        const groupName = formatGroupValue(groupToAdd);
         const currentGroups = preferences?.groups || [];
-        if (currentGroups.includes(groupName)) return;
+        const newLabel = getGroupLabelFromValue(groupName);
+        const hasLabelAlready = currentGroups.some(g => getGroupLabelFromValue(g) === newLabel);
+        if (currentGroups.includes(groupName) || hasLabelAlready) return;
         const updatedGroups = [...currentGroups, groupName];
         updatePreferences({ groups: updatedGroups });
         setTimeout(fetchEvents, 500);
@@ -204,7 +239,16 @@ export default function DashboardPage() {
     };
 
     const handleEventClick = (clickInfo) => {
-        setSelectedEvent(clickInfo.event);
+        setSelectedEvent({
+            id: clickInfo.event.id,
+            title: clickInfo.event.title,
+            start: clickInfo.event.start,
+            end: clickInfo.event.end,
+            backgroundColor: clickInfo.event.backgroundColor,
+            borderColor: clickInfo.event.borderColor,
+            extendedProps: clickInfo.event.extendedProps,
+            allDay: clickInfo.event.allDay
+        });
         setIsModalOpen(true);
     };
 
@@ -320,6 +364,9 @@ export default function DashboardPage() {
                     {/* Left Sidebar - Settings */}
                     <div className="xl:col-span-1 h-full overflow-hidden flex flex-col">
                         <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4 pb-4">
+                            <SidebarNav theme={theme} toggleTheme={toggleTheme} />
+
+
                             <GroupSelector
                                 preferences={preferences}
                                 onAddGroup={handleAddGroup}
@@ -368,6 +415,11 @@ export default function DashboardPage() {
                     {/* Main Content - Calendar */}
                     <div className="xl:col-span-3 h-full overflow-hidden">
                         <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-2xl rounded-[2rem] shadow-2xl border border-white/50 dark:border-white/10 p-4 h-full flex flex-col transition-all duration-300 hover:shadow-[#005b8d]/10">
+                            {statusMessage && (
+                                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-100 px-3 py-2 text-sm">
+                                    {statusMessage}
+                                </div>
+                            )}
                             <FullCalendar
                                 ref={calendarRef}
                                 plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -425,37 +477,74 @@ export default function DashboardPage() {
             
             /* Calendar Customization */
             .fc { font-family: inherit; }
-            .fc-toolbar-title { font-size: 1.5rem !important; font-weight: 700 !important; color: #0f172a; }
+            .fc-toolbar-title { font-size: 1.75rem !important; font-weight: 800 !important; color: #0f172a; letter-spacing: -0.025em; }
             .dark .fc-toolbar-title { color: #f8fafc; }
-            .fc-button-primary { background-color: #005b8d !important; border-color: #005b8d !important; border-radius: 0.75rem !important; text-transform: capitalize; font-weight: 500; padding: 0.5rem 1rem !important; transition: all 0.2s; }
-            .fc-button-primary:hover { background-color: #004a75 !important; transform: translateY(-1px); box-shadow: 0 4px 6px -1px rgba(0, 91, 141, 0.2); }
-            .fc-button-active { background-color: #003858 !important; }
             
-            /* Button Spacing */
-            .fc-button-group > .fc-button { margin-left: 4px !important; border-radius: 0.75rem !important; }
+            /* Buttons */
+            .fc-button-primary { 
+                background-color: #005b8d !important; 
+                border-color: transparent !important; 
+                border-radius: 1rem !important; 
+                text-transform: capitalize; 
+                font-weight: 600; 
+                padding: 0.6rem 1.2rem !important; 
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+                box-shadow: 0 4px 6px -1px rgba(0, 91, 141, 0.2), 0 2px 4px -1px rgba(0, 91, 141, 0.1);
+            }
+            .fc-button-primary:hover { 
+                background-color: #004a75 !important; 
+                transform: translateY(-2px); 
+                box-shadow: 0 10px 15px -3px rgba(0, 91, 141, 0.3), 0 4px 6px -2px rgba(0, 91, 141, 0.1); 
+            }
+            .fc-button-active { 
+                background-color: #003858 !important; 
+                transform: translateY(0);
+                box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+            }
+            
+            /* Button Group Spacing */
+            .fc-button-group > .fc-button { margin-left: 0.5rem !important; border-radius: 0.75rem !important; }
             .fc-button-group > .fc-button:first-child { margin-left: 0 !important; }
 
-            .fc-col-header-cell { background-color: transparent !important; border: none !important; padding: 1rem 0 !important; }
-            .fc-col-header-cell-cushion { color: #64748b; font-weight: 600; text-decoration: none !important; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.05em; }
+            /* Header Cells */
+            .fc-col-header-cell { background-color: transparent !important; border: none !important; padding: 1.5rem 0 1rem !important; }
+            .fc-col-header-cell-cushion { color: #64748b; font-weight: 700; text-decoration: none !important; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.1em; }
             .dark .fc-col-header-cell-cushion { color: #94a3b8; }
             
-            /* Spacing above first event (8h) - Handled by slotMinTime */
-            /* .fc-timegrid-body { padding-top: 1rem !important; } */
+            /* Time Slots */
+            .fc-timegrid-slot-label-cushion { font-size: 0.75rem; color: #94a3b8; font-weight: 600; font-variant-numeric: tabular-nums; }
             
-            .fc-timegrid-slot-label-cushion { font-size: 0.75rem; color: #94a3b8; font-weight: 500; }
-            
-            .fc-theme-standard td, .fc-theme-standard th { border-color: rgba(203, 213, 225, 0.4); }
-            .dark .fc-theme-standard td, .dark .fc-theme-standard th { border-color: rgba(51, 65, 85, 0.4); }
+            /* Grid Lines */
+            .fc-theme-standard td, .fc-theme-standard th { border-color: rgba(203, 213, 225, 0.3); }
+            .dark .fc-theme-standard td, .dark .fc-theme-standard th { border-color: rgba(51, 65, 85, 0.3); }
 
             /* Dark Mode Calendar Background Fix */
             .dark .fc-theme-standard td, .dark .fc-theme-standard th { background-color: transparent !important; }
-            .dark .fc-scrollgrid { border-color: rgba(51, 65, 85, 0.4); }
+            .dark .fc-scrollgrid { border-color: rgba(51, 65, 85, 0.3); }
             .dark .fc-list-day-cushion, .dark .fc-list-event:hover td { background-color: rgba(30, 41, 59, 0.5); }
             .dark .fc-col-header-cell { background-color: transparent !important; }
             
-            .fc-event { border-radius: 8px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.1s, box-shadow 0.1s; cursor: pointer; }
-            .fc-event:hover { transform: scale(1.02); box-shadow: 0 8px 16px rgba(0,0,0,0.1); z-index: 50; }
-            .fc-event-main { padding: 4px 6px; font-weight: 500; font-size: 0.85rem; }
+            /* Events */
+            .fc-event { 
+                border-radius: 12px; 
+                border: none; 
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); 
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+                cursor: pointer; 
+                overflow: hidden;
+            }
+
+            .fc-event-main { 
+                padding: 6px 10px; 
+                font-weight: 600; 
+                font-size: 0.85rem; 
+                letter-spacing: -0.01em;
+                background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 100%);
+            }
+            
+            /* Current Time Indicator */
+            .fc-timegrid-now-indicator-line { border-color: #ef4444; border-width: 2px; }
+            .fc-timegrid-now-indicator-arrow { border-color: #ef4444; border-width: 6px; }
         `}</style>
         </div>
     );

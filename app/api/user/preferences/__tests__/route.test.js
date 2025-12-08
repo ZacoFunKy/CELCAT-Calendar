@@ -1,4 +1,3 @@
-/*
 import { DELETE } from '../route';
 import { NextResponse } from 'next/server';
 import UserPreference from '../../../../../models/UserPreference';
@@ -59,4 +58,3 @@ describe('User Preferences API', () => {
         });
     });
 });
-*/

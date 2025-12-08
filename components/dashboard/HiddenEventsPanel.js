@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FiEyeOff, FiTrash2, FiX, FiAlertCircle, FiAlertTriangle } from 'react-icons/fi';
 import CollapsibleCard from '../CollapsibleCard';
 import Portal from '../Portal';
+import ConfirmationModal from '../ConfirmationModal';
 
 export default function HiddenEventsPanel({
     hiddenEvents,
@@ -101,38 +102,15 @@ export default function HiddenEventsPanel({
                 </div>
             </CollapsibleCard>
 
-            {/* Confirmation Modal */}
-            {showConfirm && (
-                <Portal>
-                    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-                        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-200">
-                            <div className="flex flex-col items-center text-center">
-                                <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mb-4 text-red-600 dark:text-red-500">
-                                    <FiAlertTriangle className="w-6 h-6" />
-                                </div>
-                                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Tout réafficher ?</h3>
-                                <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                                    Cette action supprimera toutes les règles de masquage et réaffichera tous les cours précédemment masqués.
-                                </p>
-                                <div className="flex gap-3 w-full">
-                                    <button
-                                        onClick={() => setShowConfirm(false)}
-                                        className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                                    >
-                                        Annuler
-                                    </button>
-                                    <button
-                                        onClick={handleConfirmUnhide}
-                                        className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors shadow-lg shadow-red-600/20"
-                                    >
-                                        Confirmer
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </Portal>
-            )}
+            <ConfirmationModal
+                isOpen={showConfirm}
+                onClose={() => setShowConfirm(false)}
+                onConfirm={handleConfirmUnhide}
+                title="Tout réafficher ?"
+                description="Cette action supprimera toutes les règles de masquage et réaffichera tous les cours précédemment masqués."
+                confirmText="Confirmer"
+                variant="danger"
+            />
         </>
     );
 }

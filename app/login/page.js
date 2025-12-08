@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { motion } from 'framer-motion';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
@@ -37,25 +38,52 @@ export default function LoginPage() {
                 <div className="absolute bottom-[-20%] right-[-10%] w-[60vw] h-[60vw] bg-cyan-200/40 dark:bg-cyan-900/20 rounded-full blur-[100px] animate-blob animation-delay-2000 mix-blend-multiply dark:mix-blend-screen"></div>
             </div>
 
-            <div className="w-full max-w-md bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 dark:border-white/10 p-8">
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+                className="w-full max-w-md bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 dark:border-white/10 p-8"
+            >
                 <div className="text-center mb-8 relative">
                     <Link href="/" className="absolute left-0 top-0 p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-[#005b8d] hover:text-white transition-all duration-300 shadow-sm hover:shadow-md group">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 transform group-hover:-translate-x-0.5 transition-transform">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                         </svg>
                     </Link>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Connexion</h1>
-                    <p className="text-slate-500 dark:text-slate-400">Accède à ton emploi du temps personnalisé</p>
+                    <motion.h1
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.2 }}
+                        className="text-3xl font-bold text-slate-900 dark:text-white mb-2"
+                    >
+                        Connexion
+                    </motion.h1>
+                    <motion.p
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.3 }}
+                        className="text-slate-500 dark:text-slate-400"
+                    >
+                        Accède à ton emploi du temps personnalisé
+                    </motion.p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {error && (
-                        <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-300 rounded-xl text-sm font-medium text-center">
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-300 rounded-xl text-sm font-medium text-center"
+                        >
                             {error}
-                        </div>
+                        </motion.div>
                     )}
 
-                    <div>
+                    <motion.div
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.4 }}
+                    >
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Email</label>
                         <input
                             type="email"
@@ -65,9 +93,13 @@ export default function LoginPage() {
                             placeholder="etudiant@u-bordeaux.fr"
                             required
                         />
-                    </div>
+                    </motion.div>
 
-                    <div>
+                    <motion.div
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.5 }}
+                    >
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Mot de passe</label>
                         <input
                             type="password"
@@ -77,25 +109,35 @@ export default function LoginPage() {
                             placeholder="••••••••"
                             required
                         />
-                    </div>
+                    </motion.div>
 
-                    <button
+                    <motion.button
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.6 }}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
                         type="submit"
-                        className="w-full py-3.5 bg-[#005b8d] hover:bg-[#004a75] text-white font-bold rounded-xl shadow-lg shadow-[#005b8d]/20 transition-all transform active:scale-[0.98]"
+                        className="w-full py-3.5 bg-[#005b8d] hover:bg-[#004a75] text-white font-bold rounded-xl shadow-lg shadow-[#005b8d]/20 transition-all"
                     >
                         Se connecter
-                    </button>
+                    </motion.button>
                 </form>
 
-                <div className="mt-8 text-center">
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.7 }}
+                    className="mt-8 text-center"
+                >
                     <p className="text-slate-500 dark:text-slate-400 text-sm">
                         Pas encore de compte ?{' '}
                         <Link href="/register" className="text-[#005b8d] dark:text-blue-400 font-bold hover:underline">
                             S'inscrire
                         </Link>
                     </p>
-                </div>
-            </div>
+                </motion.div>
+            </motion.div>
         </div>
     );
 }

@@ -1,7 +1,7 @@
-/*
+/**
  * Tests for /api/status route
  * Validates the status check endpoint functionality
- * /
+ */
 
 import { GET } from '../route';
 
@@ -126,4 +126,3 @@ describe('Status API Route', () => {
     expect(json.online).toBe(false);
   });
 });
-*/

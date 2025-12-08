@@ -10,23 +10,48 @@ import { checkScheduleChanges, sendPushNotification } from '../notifications/not
 import dbConnect from '../../../lib/db';
 import User from '../../../models/User';
 import UserPreference from '../../../models/UserPreference';
-
-
 import { CONFIG, getFullAcademicYear, processEvent, applyCustomizations } from './utils.js';
 
+const LOG_LEVEL = process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'warn' : 'info');
 const logger = {
-  info: (msg, data) => console.log(`[INFO] ${msg}`, data ? JSON.stringify(data) : ''),
+  info: (msg, data) => {
+    if (LOG_LEVEL === 'info' || LOG_LEVEL === 'debug') {
+      console.log(`[INFO] ${msg}`, data ? JSON.stringify(data) : '');
+    }
+  },
   error: (msg, err) => console.error(`[ERROR] ${msg}`, err)
 };
 
-async function fetchGroupData(groupName) {
+function normalizeGroupValue(groupValue) {
+  if (!groupValue) return { id: '', label: '' };
+  if (typeof groupValue === 'object' && (groupValue.id || groupValue.label || groupValue.text)) {
+    const id = String(groupValue.id || groupValue.label || groupValue.text || '');
+    const label = String(groupValue.label || groupValue.text || groupValue.id || '');
+    return { id, label };
+  }
+  const raw = String(groupValue);
+  if (raw.includes('::')) {
+    const [idPart, ...rest] = raw.split('::');
+    const label = rest.join('::') || idPart;
+    return { id: idPart, label };
+  }
+  return { id: raw, label: raw };
+}
+
+// --- Helper Functions ---
+
+async function fetchGroupData(groupValue) {
+  const { id, label } = normalizeGroupValue(groupValue);
+  const groupId = id || label;
+  if (!groupId) return [];
+
   const { start, end } = getFullAcademicYear();
   const formData = new URLSearchParams();
   formData.append('start', start);
   formData.append('end', end);
   formData.append('resType', '103');
   formData.append('calView', 'agendaDay');
-  formData.append('federationIds[]', groupName);
+  formData.append('federationIds[]', groupId);
   formData.append('colourScheme', '3');
 
   let attempt = 0;
@@ -56,45 +81,54 @@ export function clearInFlightRequests() {
   inFlightRequests.clear();
 }
 
-async function getEventsForSingleGroup(groupName) {
-  if (!CONFIG.GROUP_REGEX.test(groupName)) {
-    logger.error(`Invalid group name: ${groupName}`);
+async function getEventsForSingleGroup(groupValue) {
+  const { id, label } = normalizeGroupValue(groupValue);
+  const groupKey = id || label;
+  const displayName = label || id;
+
+  if (!groupKey) return [];
+
+  trackGroupRequest(displayName);
+
+  // Basic safety check: reject obvious injection attempts only
+  if (groupKey.includes('<') || groupKey.includes('>') || groupKey.includes('\0')) {
+    logger.error(`Rejected suspicious group value: ${groupKey}`);
     return [];
   }
 
-  trackGroupRequest(groupName);
-
   // 1. Check cache first
-  const cached = getCachedGroupData(groupName);
+  const cached = getCachedGroupData(groupKey);
   if (cached) return cached;
 
   // 2. Check in-flight requests (deduplication)
-  if (inFlightRequests.has(groupName)) {
-    logger.info(`Joining in-flight request for group: ${groupName}`);
-    return inFlightRequests.get(groupName);
+  if (inFlightRequests.has(groupKey)) {
+    logger.info(`Joining in-flight request for group: ${displayName}`);
+    return inFlightRequests.get(groupKey);
   }
 
   // 3. Fetch new data
   const fetchPromise = (async () => {
     try {
-      const events = await fetchGroupData(groupName);
-      setCachedGroupData(groupName, events);
+      const events = await fetchGroupData(groupKey);
+      setCachedGroupData(groupKey, events);
 
-      // Notify if schedule changed (async)
-      checkScheduleChanges(groupName, events).catch(err =>
-        logger.error("Failed to check schedule changes", err)
-      );
+      // Notify if schedule changed (sync, returns object not promise)
+      try {
+        checkScheduleChanges(displayName, events);
+      } catch (err) {
+        logger.error("Failed to check schedule changes", err);
+      }
 
       return events;
     } catch (error) {
-      logger.error(`Failed to fetch group ${groupName}`, error);
+      logger.error(`Failed to fetch group ${displayName}`, error);
       return [];
     } finally {
-      inFlightRequests.delete(groupName);
+      inFlightRequests.delete(groupKey);
     }
   })();
 
-  inFlightRequests.set(groupName, fetchPromise);
+  inFlightRequests.set(groupKey, fetchPromise);
   return fetchPromise;
 }
 
@@ -102,6 +136,7 @@ export async function GET(request) {
   const startTime = Date.now();
   let requestHiddenRules = [];
   let requestRenamingRules = new Map();
+  let tokenUserFound = false;
 
   try {
     // Periodic cache cleanup
@@ -113,7 +148,9 @@ export async function GET(request) {
     const token = searchParams.get('token');
     const format = searchParams.get('format'); // 'ics' (default) or 'json'
 
-    let groups = [];
+    let groupValues = [];
+    let normalizedGroups = [];
+    let groupLabels = [];
     let showHolidays = searchParams.get('holidays') === 'true';
     let hiddenEvents = [];
     let customNames = new Map();
@@ -127,9 +164,10 @@ export async function GET(request) {
         const user = await User.findOne({ calendarToken: token });
 
         if (user) {
+          tokenUserFound = true;
           prefs = await UserPreference.findOne({ userId: user._id });
           if (prefs) {
-            groups = prefs.groups || [];
+            groupValues = prefs.groups || [];
             if (prefs.colorMap) {
               colorMap = prefs.colorMap instanceof Map ? prefs.colorMap : new Map(Object.entries(prefs.colorMap));
             }
@@ -157,27 +195,47 @@ export async function GET(request) {
     }
 
     // 2. Fallback to 'group' param if no valid token/groups found
-    if (groups.length === 0) {
+    if (groupValues.length === 0 && tokenUserFound) {
+      // Token is valid but user has no groups configured yet; return empty list instead of 400
+      return NextResponse.json({ events: [] });
+    }
+
+    if (groupValues.length === 0) {
       const groupParam = searchParams.get('group');
       if (!groupParam) {
         return NextResponse.json({ error: "Paramètre 'group' manquant ou token invalide" }, { status: 400 });
       }
-      groups = groupParam.split(',')
+      groupValues = groupParam.split(',')
         .map(g => g.trim())
         .filter(g => g.length > 0)
         .slice(0, 10);
     }
 
-    if (groups.length === 0) {
+    normalizedGroups = groupValues
+      .map(normalizeGroupValue)
+      .filter(({ id, label }) => {
+        const name = label || id;
+        if (!name) return false;
+        // Basic safety: reject obvious injection attempts
+        if (name.includes('<') || name.includes('>') || name.includes('\0')) {
+          logger.error(`Rejected suspicious group: ${name}`);
+          return false;
+        }
+        return true;
+      });
+
+    groupLabels = normalizedGroups.map(g => g.label || g.id);
+
+    if (normalizedGroups.length === 0) {
       return NextResponse.json({ error: "Groupe invalide" }, { status: 400 });
     }
 
     // Exécution parallèle (Chaque fetch sera dédoublonné et caché par Vercel/Next.js)
-    const results = await Promise.all(groups.map(group => getEventsForSingleGroup(group)));
+    const results = await Promise.all(normalizedGroups.map(group => getEventsForSingleGroup(group)));
     const allRawEvents = results.flat();
 
     if (allRawEvents.length === 0) {
-      logger.info("Aucun événement trouvé", { groups });
+      logger.info("Aucun événement trouvé", { groups: groupLabels });
       return NextResponse.json({ error: "Aucun cours trouvé ou erreur source" }, { status: 404 });
     }
 
@@ -253,7 +311,7 @@ export async function GET(request) {
     }
 
     const calendar = ical({
-      name: `EDT - ${groups.join('+')}`,
+      name: `EDT - ${groupLabels.join('+')}`,
       timezone: CONFIG.timezone,
       ttl: CONFIG.CACHE_TTL
     });
@@ -316,13 +374,13 @@ export async function GET(request) {
       return NextResponse.json({ error: "Aucun cours trouvé" }, { status: 404 });
     }
 
-    const safeFilename = `edt-${groups.join('_').replace(/[^a-z0-9]/gi, '-').toLowerCase()}.ics`;
+    const safeFilename = `edt-${groupLabels.join('_').replace(/[^a-z0-9]/gi, '-').toLowerCase()}.ics`;
     const executionTime = Date.now() - startTime;
 
-    logger.info("Génération OK", { groups, events: realCourseCount, ms: executionTime });
+    logger.info("Génération OK", { groups: groupLabels, events: realCourseCount, ms: executionTime });
 
     // Send download notification for each group
-    await Promise.all(groups.map(group =>
+    await Promise.all(groupLabels.map(group =>
       sendPushNotification({
         groupName: group,
         eventCount: realCourseCount,
