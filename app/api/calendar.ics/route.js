@@ -54,6 +54,8 @@ async function fetchGroupData(groupValue) {
   formData.append('federationIds[]', groupId);
   formData.append('colourScheme', '3');
 
+  logger.info(`Fetching from CELCAT`, { groupId, startDate: start, endDate: end });
+
   let attempt = 0;
   while (attempt < CONFIG.MAX_RETRIES) {
     try {
@@ -65,9 +67,12 @@ async function fetchGroupData(groupValue) {
       });
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
+      const data = await response.json();
+      logger.info(`CELCAT response for ${groupId}`, { eventCount: data?.length || 0 });
+      return data;
     } catch (error) {
       attempt++;
+      logger.error(`CELCAT fetch attempt ${attempt}/${CONFIG.MAX_RETRIES} failed for ${groupId}`, error.message);
       if (attempt === CONFIG.MAX_RETRIES) throw error;
       await new Promise(r => setTimeout(r, CONFIG.INITIAL_BACKOFF * Math.pow(2, attempt - 1)));
     }
@@ -110,6 +115,7 @@ async function getEventsForSingleGroup(groupValue) {
   const fetchPromise = (async () => {
     try {
       const events = await fetchGroupData(groupKey);
+      logger.info(`Fetched events for group ${displayName}`, { count: events?.length || 0, groupKey });
       setCachedGroupData(groupKey, events);
 
       // Notify if schedule changed (sync, returns object not promise)
@@ -233,6 +239,20 @@ export async function GET(request) {
     // Exécution parallèle (Chaque fetch sera dédoublonné et caché par Vercel/Next.js)
     const results = await Promise.all(normalizedGroups.map(group => getEventsForSingleGroup(group)));
     const allRawEvents = results.flat();
+
+    logger.info("API Response Debug", { 
+      groupLabels, 
+      resultsCount: results.length,
+      rawEventsCount: allRawEvents.length,
+      format,
+      tokenUserFound
+    });
+
+    // Return empty JSON if no events found but JSON format requested
+    if (allRawEvents.length === 0 && format === 'json') {
+      logger.info("Aucun événement trouvé - retournant events vides", { groups: groupLabels });
+      return NextResponse.json({ events: [] });
+    }
 
     if (allRawEvents.length === 0) {
       logger.info("Aucun événement trouvé", { groups: groupLabels });
