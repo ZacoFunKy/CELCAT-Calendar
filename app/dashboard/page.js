@@ -242,8 +242,15 @@ export default function DashboardPage() {
     };
 
     const handleTypeMappingChange = (type, value) => {
-        const newMappings = { ...typeMappings, [type]: value };
-        if (!value) delete newMappings[type]; // Remove if empty
+        let newMappings;
+        if (!value || value.trim() === '') {
+            // Remove the mapping if empty - create new object without the key
+            const { [type]: removed, ...rest } = typeMappings;
+            newMappings = rest;
+        } else {
+            // Add or update the mapping
+            newMappings = { ...typeMappings, [type]: value };
+        }
         setTypeMappings(newMappings);
         updatePreferences({ settings: { ...preferences?.settings, typeMappings: newMappings } });
         // Reload events to apply the new mapping immediately
