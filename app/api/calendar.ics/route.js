@@ -198,7 +198,6 @@ export async function GET(request) {
       pruneCache();
     }
 
-    const { searchParams } = new URL(request.url);
     const token = searchParams.get('token');
     const format = searchParams.get('format'); // 'ics' (default) or 'json'
 
