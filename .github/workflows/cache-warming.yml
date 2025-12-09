@@ -1,0 +1,21 @@
+name: Cache Warming
+
+on:
+  schedule:
+    # Toutes les 2 heures (alternative gratuite au Vercel Cron)
+    - cron: '0 */2 * * *'
+  workflow_dispatch:  # Permet de lancer manuellement
+
+jobs:
+  warm-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warm Cache
+        run: |
+          curl -X GET \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://emploi-du-temps-zacofunky.vercel.app/api/calendar.ics/warm-cache \
+            -f -s -S || echo "Cache warming failed but continuing"
+        
+      - name: Log Result
+        run: echo "Cache warming completed at $(date)"
