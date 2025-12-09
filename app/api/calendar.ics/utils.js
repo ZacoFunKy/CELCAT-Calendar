@@ -57,10 +57,14 @@ export function cleanDescriptionText(text) {
 }
 
 export function processEvent(event, { showHolidays }) {
-    if (!event || typeof event !== 'object' || !event.start) return null;
+    if (!event || typeof event !== 'object' || !event.start) {
+        return null;
+    }
 
     const cleanDescription = cleanDescriptionText(event.description || "");
-    if (CONFIG.blacklist.some(keyword => cleanDescription.includes(keyword))) return null;
+    if (CONFIG.blacklist.some(keyword => cleanDescription.includes(keyword))) {
+        return null;
+    }
 
     const fullTextScan = ((event.eventCategory || "") + " " + cleanDescription).toUpperCase();
     const sitesText = (event.sites ? event.sites.join(', ') : '').toUpperCase();
@@ -73,7 +77,19 @@ export function processEvent(event, { showHolidays }) {
 
     // Look for full course name in description
     for (const line of descriptionLines) {
-        if (/^\d[A-Z0-9]+\s+/i.test(line)) continue;
+        // Check if line starts with module code (e.g., "4TYG601U - Utilisation des réseaux")
+        // Extract course name from same line as the code
+        const moduleCodeMatch = line.match(/^\d[A-Z0-9]+\s*-?\s*(.+)$/i);
+        if (moduleCodeMatch) {
+            const courseName = moduleCodeMatch[1].trim();
+            // Make sure it's not just another code or group identifier
+            if (courseName && courseName.length > 3 && !/^\d[A-Z0-9]+\s*-/i.test(courseName) && !/^G\d+$/i.test(courseName)) {
+                summary = courseName;
+                break;
+            }
+            continue;
+        }
+        
         if (/^(Cours|TD|TP|CM|Examen|Examens|Contrôle Continu)$/i.test(line)) continue;
         if (line.toLowerCase().includes('salle') ||
             line.toLowerCase().includes('amphi') ||
@@ -120,6 +136,17 @@ export function processEvent(event, { showHolidays }) {
         else summary = descriptionLines[0] || "Cours";
     }
 
+    // Fallback: if summary is too short or looks like a code, try modules
+    if (summary.length < 3 || /^\d[A-Z0-9]+$/.test(summary)) {
+        if (event.modules && event.modules.length > 0) {
+            const moduleName = event.modules[0];
+            const cleanName = moduleName.replace(/^\d[A-Z0-9]+\s*-?\s*/i, '').trim();
+            if (cleanName && cleanName.length > summary.length) {
+                summary = cleanName;
+            }
+        }
+    }
+
     // Look for professor name
     for (const line of descriptionLines) {
         if (line === summary) continue;
@@ -150,6 +177,16 @@ export function processEvent(event, { showHolidays }) {
 
     summary = cleanDescriptionText(summary);
 
+    // After cleaning, check if summary is too short and use modules as fallback
+    const summaryTooShort = summary.length < 3 || /^\d+$/.test(summary) || /^[A-Z0-9-]+$/.test(summary);
+    if (summaryTooShort && event.modules && event.modules.length > 0) {
+        const moduleName = event.modules[0];
+        const cleanName = moduleName.replace(/^\d[A-Z0-9]+\s*-?\s*/i, '').trim();
+        if (cleanName && cleanName.length >= 3) {
+            summary = cleanName;
+        }
+    }
+
     const isHoliday = (event.eventCategory && event.eventCategory.includes('Vacances')) ||
         summary.toLowerCase().includes('vacances');
 
@@ -167,8 +204,8 @@ export function processEvent(event, { showHolidays }) {
 
         return {
             id: event.id,
-            start: startDate,
-            end: endDate,
+            start: toLocalISOString(startDate),
+            end: toLocalISOString(endDate),
             summary: summary,
             description: null,
             location: null,
@@ -177,7 +214,9 @@ export function processEvent(event, { showHolidays }) {
         };
     }
 
-    if (summary.length < 3 && (!event.modules || event.modules.length === 0)) return null;
+    if (summary.length < 3 && (!event.modules || event.modules.length === 0)) {
+        return null;
+    }
 
     for (const [key, replacement] of Object.entries(CONFIG.replacements)) {
         if (summary.includes(key)) summary = replacement;
@@ -193,10 +232,14 @@ export function processEvent(event, { showHolidays }) {
 
     if (prefix) {
         const summaryUpper = summary.toUpperCase();
-        if (!summaryUpper.startsWith(prefix.toUpperCase()) && !summaryUpper.startsWith("TD") && !summaryUpper.startsWith("TP")) {
+        // Only add prefix if summary is not empty and doesn't already start with the type
+        if (summary.length >= 3 && !summaryUpper.startsWith(prefix.toUpperCase()) && !summaryUpper.startsWith("TD") && !summaryUpper.startsWith("TP")) {
             summary = `${prefix} - ${summary}`;
-        } else if (isMachine && !summaryUpper.includes("MACHINE")) {
+        } else if (isMachine && !summaryUpper.includes("MACHINE") && summary.length >= 3) {
             summary = `${prefix} - ${summary.replace(/^(TD|TP)\s*-?\s*/i, '')}`;
+        } else if (summary.length < 3) {
+            // If summary is too short, just use the prefix without adding empty content
+            summary = prefix;
         }
     }
 
@@ -221,8 +264,8 @@ export function processEvent(event, { showHolidays }) {
 
     return {
         id: event.id,
-        start: startDate,
-        end: endDate,
+        start: toLocalISOString(startDate),
+        end: toLocalISOString(endDate),
         summary: summary,
         description: cleanDescription,
         location: finalLocation,
@@ -230,6 +273,19 @@ export function processEvent(event, { showHolidays }) {
         isHoliday: false,
         allDay: false
     };
+}
+
+function toLocalISOString(date) {
+    // Format date as ISO string SIMPLE format without timezone or milliseconds
+    // FullCalendar v6 treats this as local time
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    // Return format: YYYY-MM-DDTHH:mm:ss (FullCalendar interprets as local)
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
 }
 
 export function applyCustomizations(event, { customNames, typeMappings, renamingRules, hiddenRules }) {

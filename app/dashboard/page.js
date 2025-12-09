@@ -117,42 +117,39 @@ export default function DashboardPage() {
             const res = await fetch(`/api/calendar.ics?token=${calendarToken}&format=json&holidays=${showHolidays}`);
             if (res.ok) {
                 const data = await res.json();
-                const formattedEvents = (data.events || []).map(event => {
+                
+                const formattedEvents = (data.events || []).map((event) => {
                     let title = event.summary || event.title || 'Cours';
 
-                    // 1. Apply type mappings (before custom names to allow overriding)
-                    if (typeMappings) {
-                        const prefixMatch = title.match(/^([A-Z]+(?:\s+[A-Z]+)?)\s*-\s*(.+)/);
-                        if (prefixMatch) {
-                            const prefix = prefixMatch[1];
-                            const rest = prefixMatch[2];
-                            if (typeMappings[prefix]) {
-                                // User requested to keep the hyphen
-                                title = typeMappings[prefix] ? `${typeMappings[prefix]} - ${rest}` : rest;
-                            }
+                    // Parse type, name, teacher from original title
+                    let type = 'Cours', name = title, teacher = '';
+                    if (title.includes(' - ')) {
+                        const parts = title.split(' - ');
+                        const standardTypes = ['CM', 'TD', 'TP', 'TD Machine', 'TP Machine'];
+                        
+                        if (standardTypes.some(t => parts[0].includes(t))) {
+                            type = parts[0];
+                            name = parts[1] || '';
+                            teacher = parts[2] || '';
                         }
+                    }
+
+                    // 1. Apply type mappings to the extracted type
+                    if (typeMappings && typeMappings[type]) {
+                        type = typeMappings[type];
                     }
 
                     // 2. Apply custom names (overrides everything)
                     if (customNames[event.id]) {
                         title = customNames[event.id];
                     } else {
-                        // 3. Apply title format if no custom name
-                        let type = 'Cours', name = title, teacher = '';
-                        if (title.includes(' - ')) {
-                            const parts = title.split(' - ');
-                            // Check against standard types AND mapped types
-                            const standardTypes = ['CM', 'TD', 'TP', 'TD Machine', 'TP Machine'];
-                            const mappedTypes = Object.values(typeMappings || {});
-                            const allTypes = [...standardTypes, ...mappedTypes];
-
-                            if (allTypes.some(t => parts[0].includes(t))) {
-                                type = parts[0]; name = parts[1] || ''; teacher = parts[2] || '';
-                            }
-                        }
+                        // 3. Apply title format with mapped type
                         let formattedTitle = titleFormat
-                            .replace('{type}', type).replace('{name}', name).replace('{teacher}', teacher)
-                            .replace(/ - \s*$/, '').trim();
+                            .replace('{type}', type)
+                            .replace('{name}', name)
+                            .replace('{teacher}', teacher)
+                            .replace(/ - \s*$/, '')
+                            .trim();
                         if (formattedTitle) title = formattedTitle;
                     }
 
@@ -166,8 +163,26 @@ export default function DashboardPage() {
                     else if (typeToCheck.includes('TD')) { backgroundColor = colorSettings.TD; borderColor = colorSettings.TD; }
                     else if (typeToCheck.includes('TP')) { backgroundColor = colorSettings.TP; borderColor = colorSettings.TP; }
 
-                    return { ...event, title, backgroundColor, borderColor };
+                    // Create new object with all required properties for FullCalendar
+                    const formatted = {
+                        id: event.id,
+                        title: title,  // REQUIRED by FullCalendar
+                        start: event.start,
+                        end: event.end,
+                        backgroundColor: backgroundColor,
+                        borderColor: borderColor,
+                        // Pass through other properties
+                        summary: event.summary,
+                        description: event.description,
+                        location: event.location,
+                        eventType: event.eventType,
+                        isHoliday: event.isHoliday,
+                        allDay: event.allDay
+                    };
+                    
+                    return formatted;
                 });
+                
                 setEvents(formattedEvents);
                 if ((data.events || []).length === 0) {
                     setStatusMessage('Aucun cours trouvé pour les groupes sélectionnés.');
@@ -222,6 +237,8 @@ export default function DashboardPage() {
         const newColors = { ...colorSettings, [type]: color };
         setColorSettings(newColors);
         updatePreferences({ colorMap: newColors });
+        // Reload events to apply new colors immediately
+        setTimeout(fetchEvents, 100);
     };
 
     const handleTypeMappingChange = (type, value) => {
@@ -229,6 +246,8 @@ export default function DashboardPage() {
         if (!value) delete newMappings[type]; // Remove if empty
         setTypeMappings(newMappings);
         updatePreferences({ settings: { ...preferences?.settings, typeMappings: newMappings } });
+        // Reload events to apply the new mapping immediately
+        setTimeout(fetchEvents, 100);
     };
 
     const handleTitleFormatSave = () => {
@@ -380,6 +399,7 @@ export default function DashboardPage() {
                                 onHolidayToggle={(checked) => {
                                     setShowHolidays(checked);
                                     updatePreferences({ settings: { ...preferences?.settings, showHolidays: checked, titleFormat, customNames, typeMappings } });
+                                    setTimeout(fetchEvents, 100);
                                 }}
                                 titleFormat={titleFormat}
                                 onTitleFormatChange={(e) => setTitleFormat(e.target.value)}
@@ -420,6 +440,9 @@ export default function DashboardPage() {
                                     {statusMessage}
                                 </div>
                             )}
+                            <div className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                                Événements chargés: {events.length} | Première date: {events[0]?.start}
+                            </div>
                             <FullCalendar
                                 ref={calendarRef}
                                 plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}

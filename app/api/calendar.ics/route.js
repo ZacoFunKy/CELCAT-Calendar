@@ -4,7 +4,8 @@ import {
   getCachedGroupData,
   setCachedGroupData,
   trackGroupRequest,
-  pruneCache
+  pruneCache,
+  getCacheStats
 } from './cache.js';
 import { checkScheduleChanges, sendPushNotification } from '../notifications/notifier.js';
 import dbConnect from '../../../lib/db';
@@ -12,7 +13,7 @@ import User from '../../../models/User';
 import UserPreference from '../../../models/UserPreference';
 import { CONFIG, getFullAcademicYear, processEvent, applyCustomizations } from './utils.js';
 
-const LOG_LEVEL = process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'warn' : 'info');
+const LOG_LEVEL = process.env.LOG_LEVEL || 'warn'; // Disabled logging by default
 const logger = {
   info: (msg, data) => {
     if (LOG_LEVEL === 'info' || LOG_LEVEL === 'debug') {
@@ -50,7 +51,7 @@ async function fetchGroupData(groupValue) {
   formData.append('start', start);
   formData.append('end', end);
   formData.append('resType', '103');
-  formData.append('calView', 'agendaDay');
+  formData.append('calView', 'month'); // Changed from agendaDay to month
   formData.append('federationIds[]', groupId);
   formData.append('colourScheme', '3');
 
@@ -68,7 +69,13 @@ async function fetchGroupData(groupValue) {
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-      logger.info(`CELCAT response for ${groupId}`, { eventCount: data?.length || 0 });
+      const withoutNulls = (Array.isArray(data) ? data : []).filter(e => e !== null && e !== undefined);
+      logger.info(`CELCAT response for ${groupId}`, { 
+        totalCount: data?.length || 0, 
+        nonNullCount: withoutNulls.length,
+        isArray: Array.isArray(data), 
+        fullResponse: JSON.stringify(data).substring(0, 500)
+      });
       return data;
     } catch (error) {
       attempt++;
@@ -91,9 +98,13 @@ async function getEventsForSingleGroup(groupValue) {
   const groupKey = id || label;
   const displayName = label || id;
 
-  if (!groupKey) return [];
+  if (!groupKey) {
+    logger.info(`Empty group key for value: ${groupValue}`);
+    return [];
+  }
 
   trackGroupRequest(displayName);
+  logger.info(`Getting events for group`, { groupKey, displayName });
 
   // Basic safety check: reject obvious injection attempts only
   if (groupKey.includes('<') || groupKey.includes('>') || groupKey.includes('\0')) {
@@ -101,11 +112,36 @@ async function getEventsForSingleGroup(groupValue) {
     return [];
   }
 
-  // 1. Check cache first
-  const cached = getCachedGroupData(groupKey);
-  if (cached) return cached;
+  // 1. Check cache with stale support (optimized for Vercel serverless)
+  const cacheResult = getCachedGroupData(groupKey);
+  if (cacheResult) {
+    const { data, stale } = cacheResult;
+    
+    if (data && data.length > 0) {
+      if (!stale) {
+        // Fresh cache hit
+        logger.info(`Returning fresh cached data for ${displayName}`, { count: data.length });
+        return data;
+      } else {
+        // Stale cache hit - return immediately and revalidate in background
+        logger.info(`Returning stale cached data for ${displayName}, revalidating`, { count: data.length });
+        
+        // Background revalidation (fire-and-forget)
+        fetchGroupData(groupKey)
+          .then(events => {
+            if (events && events.length > 0) {
+              setCachedGroupData(groupKey, events);
+              logger.info(`Background revalidation complete for ${displayName}`);
+            }
+          })
+          .catch(err => logger.error(`Background revalidation failed for ${displayName}`, err));
+        
+        return data;
+      }
+    }
+  }
 
-  // 2. Check in-flight requests (deduplication)
+  // 2. Check in-flight requests (deduplication within same invocation)
   if (inFlightRequests.has(groupKey)) {
     logger.info(`Joining in-flight request for group: ${displayName}`);
     return inFlightRequests.get(groupKey);
@@ -113,9 +149,11 @@ async function getEventsForSingleGroup(groupValue) {
 
   // 3. Fetch new data
   const fetchPromise = (async () => {
+    logger.info(`Starting fetch for group ${displayName}`);
     try {
+      logger.info(`Calling fetchGroupData for ${groupKey}`);
       const events = await fetchGroupData(groupKey);
-      logger.info(`Fetched events for group ${displayName}`, { count: events?.length || 0, groupKey });
+      logger.info(`Fetched events for group ${displayName}`, { count: events?.length || 0, groupKey, sampleEvent: events?.[0] ? JSON.stringify(events[0]).substring(0, 200) : 'none' });
       setCachedGroupData(groupKey, events);
 
       // Notify if schedule changed (sync, returns object not promise)
@@ -143,6 +181,16 @@ export async function GET(request) {
   let requestHiddenRules = [];
   let requestRenamingRules = new Map();
   let tokenUserFound = false;
+
+  const { searchParams } = new URL(request.url);
+  
+  // Stats endpoint for monitoring
+  if (searchParams.get('stats') === 'true') {
+    const stats = getCacheStats();
+    return NextResponse.json(stats, {
+      headers: { 'Cache-Control': 'no-cache, no-store' }
+    });
+  }
 
   try {
     // Periodic cache cleanup
@@ -238,7 +286,7 @@ export async function GET(request) {
 
     // Exécution parallèle (Chaque fetch sera dédoublonné et caché par Vercel/Next.js)
     const results = await Promise.all(normalizedGroups.map(group => getEventsForSingleGroup(group)));
-    const allRawEvents = results.flat();
+    const allRawEvents = results.flat().filter(e => e !== null && e !== undefined);
 
     logger.info("API Response Debug", { 
       groupLabels, 
@@ -264,14 +312,30 @@ export async function GET(request) {
       const events = [];
       const processedEventIds = new Set();
 
-      allRawEvents.forEach(rawEvent => {
-        if (!rawEvent || !rawEvent.id) return;
-        if (processedEventIds.has(rawEvent.id)) return;
+      allRawEvents.forEach((rawEvent, idx) => {
+        logger.info(`Processing raw event ${idx}`, { 
+          id: rawEvent?.id, 
+          hasId: !!rawEvent?.id,
+          keys: Object.keys(rawEvent || {}),
+          event: JSON.stringify(rawEvent).substring(0, 300)
+        });
+        if (!rawEvent || !rawEvent.id) {
+          logger.info(`Skipped event ${idx}: no id`);
+          return;
+        }
+        if (processedEventIds.has(rawEvent.id)) {
+          logger.info(`Skipped event ${idx}: already processed`);
+          return;
+        }
 
         // Personalization: Skip hidden events (ID based)
-        if (hiddenEvents.includes(rawEvent.id)) return;
+        if (hiddenEvents.includes(rawEvent.id)) {
+          logger.info(`Skipped event ${idx}: hidden by id`);
+          return;
+        }
 
         const event = processEvent(rawEvent, { showHolidays });
+        logger.info(`processEvent result for event ${idx}`, { hasEvent: !!event, eventId: event?.id });
 
         if (!event) return;
 
@@ -415,8 +479,9 @@ export async function GET(request) {
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',
         'Content-Disposition': `attachment; filename="${safeFilename}"`,
-        // Headers de cache pour le navigateur/client
-        'Cache-Control': `public, max-age=${CONFIG.CACHE_TTL}, s-maxage=${CONFIG.CACHE_TTL}, stale-while-revalidate=${CONFIG.CACHE_TTL}`,
+        // Vercel Edge Cache optimized headers
+        // s-maxage: CDN cache (1h), stale-while-revalidate: serve stale + revalidate (2h)
+        'Cache-Control': `public, max-age=1800, s-maxage=3600, stale-while-revalidate=7200`,
         'X-Response-Time': `${executionTime}ms`,
       },
     });

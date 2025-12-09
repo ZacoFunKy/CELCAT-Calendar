@@ -1,5 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    // Vercel optimizations
+    experimental: {
+        // Optimize serverless functions
+        optimizePackageImports: ['ical-generator', 'ioredis'],
+    },
+
+    // Optimize production builds
+    compiler: {
+        removeConsole: process.env.NODE_ENV === 'production' ? {
+            exclude: ['error', 'warn']
+        } : false,
+    },
+
     async headers() {
         return [
             {
@@ -28,6 +41,20 @@ const nextConfig = {
                     {
                         key: 'Referrer-Policy',
                         value: 'origin-when-cross-origin'
+                    }
+                ]
+            },
+            // Optimize calendar API cache headers
+            {
+                source: '/api/calendar.ics',
+                headers: [
+                    {
+                        key: 'Cache-Control',
+                        value: 'public, s-maxage=3600, stale-while-revalidate=7200'
+                    },
+                    {
+                        key: 'CDN-Cache-Control',
+                        value: 'public, s-maxage=3600'
                     }
                 ]
             }

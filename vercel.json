@@ -1,0 +1,66 @@
+{
+  "version": 2,
+  "name": "emploi-du-temps",
+  "regions": ["cdg1"],
+  "functions": {
+    "app/api/calendar.ics/route.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    },
+    "app/api/*/route.js": {
+      "maxDuration": 10,
+      "memory": 512
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/calendar.ics/warm-cache",
+      "schedule": "0 */2 * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/calendar.ics",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, s-maxage=3600, stale-while-revalidate=7200"
+        },
+        {
+          "key": "CDN-Cache-Control",
+          "value": "public, s-maxage=3600, stale-while-revalidate=7200"
+        },
+        {
+          "key": "Vercel-CDN-Cache-Control",
+          "value": "public, s-maxage=3600, stale-while-revalidate=7200"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/health",
+      "destination": "/api/status"
+    }
+  ],
+  "env": {
+    "LOG_LEVEL": "warn"
+  }
+}
