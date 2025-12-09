@@ -203,7 +203,7 @@ export default function CustomizationPanel({
                                     <span className="text-xs font-medium text-slate-500 dark:text-slate-400 w-20">{type}</span>
                                     <input
                                         type="text"
-                                        value={typeMappings?.[type] || ''}
+                                        value={typeMappings?.[type] ?? ''}
                                         onChange={(e) => onTypeMappingChange(type, e.target.value)}
                                         placeholder={type}
                                         className="flex-1 px-3 py-2 bg-white/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#005b8d] transition-all shadow-sm focus:bg-white dark:focus:bg-slate-800"

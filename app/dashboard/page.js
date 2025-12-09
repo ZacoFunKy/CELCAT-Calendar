@@ -249,12 +249,17 @@ export default function DashboardPage() {
             newMappings = rest;
         } else {
             // Add or update the mapping
-            newMappings = { ...typeMappings, [type]: value };
+            newMappings = { ...typeMappings, [type]: value.trim() };
         }
+        
+        // Update state and preferences
         setTypeMappings(newMappings);
         updatePreferences({ settings: { ...preferences?.settings, typeMappings: newMappings } });
-        // Reload events to apply the new mapping immediately
-        setTimeout(fetchEvents, 100);
+        
+        // Force immediate reload to show changes
+        setTimeout(() => {
+            fetchEvents();
+        }, 50);
     };
 
     const handleTitleFormatSave = () => {

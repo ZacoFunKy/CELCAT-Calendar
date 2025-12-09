@@ -113,7 +113,7 @@ async function getEventsForSingleGroup(groupValue) {
   }
 
   // 1. Check cache with stale support (optimized for Vercel serverless)
-  const cacheResult = getCachedGroupData(groupKey);
+  const cacheResult = await getCachedGroupData(groupKey);
   if (cacheResult) {
     const { data, stale } = cacheResult;
     
