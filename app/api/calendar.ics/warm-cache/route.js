@@ -5,7 +5,11 @@
 
 import { NextResponse } from 'next/server';
 import { getGroupsNeedingWarmup, setCachedGroupData } from '../cache.js';
-import { getFullAcademicYear, CONFIG } from '../utils.js';
+import { getFullAcademicYear } from '../utils.js';
+import { CELCAT_CONFIG } from '../../../../lib/config.js';
+import { createLogger } from '../../../../lib/logger.js';
+
+const logger = createLogger('CacheWarming');
 
 // Verify cron secret for security
 const CRON_SECRET = process.env.CRON_SECRET || 'dev-secret';
@@ -14,6 +18,7 @@ export async function GET(request) {
   // Verify authorization for cron job
   const authHeader = request.headers.get('authorization');
   if (authHeader !== `Bearer ${CRON_SECRET}`) {
+    logger.warn('Unauthorized cache warming attempt');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -28,7 +33,7 @@ export async function GET(request) {
     // Get groups that need warming (popular groups)
     const groupsToWarm = getGroupsNeedingWarmup(3); // Min 3 requests
 
-    console.log(`[Cron] Warming ${groupsToWarm.length} groups`);
+    logger.info('Starting cache warming', { count: groupsToWarm.length });
 
     // Warm cache for each group
     for (const { name } of groupsToWarm.slice(0, 10)) { // Max 10 groups per run
@@ -38,17 +43,17 @@ export async function GET(request) {
         formData.append('start', start);
         formData.append('end', end);
         formData.append('resType', '103');
-        formData.append('calView', 'agendaWeek');
+        formData.append('calView', 'month');
         formData.append('federationIds[]', name);
+        formData.append('colourScheme', '3');
 
-        const response = await fetch('https://celcat-amu.univ-amu.fr/calendar2/Home/GetCalendarData', {
+        const response = await fetch(CELCAT_CONFIG.url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'AMU-Calendar/2.0',
           },
           body: formData.toString(),
-          signal: AbortSignal.timeout(CONFIG.TIMEOUT),
+          signal: AbortSignal.timeout(CELCAT_CONFIG.timeout),
         });
 
         if (response.ok) {
@@ -56,14 +61,14 @@ export async function GET(request) {
           if (data && Array.isArray(data)) {
             await setCachedGroupData(name, data);
             results.warmed.push(name);
-            console.log(`[Cron] Warmed cache for ${name}: ${data.length} events`);
+            logger.info('Warmed cache for group', { name, count: data.length });
           }
         } else {
           results.failed.push({ name, reason: `HTTP ${response.status}` });
         }
       } catch (error) {
         results.failed.push({ name, reason: error.message });
-        console.error(`[Cron] Failed to warm ${name}:`, error.message);
+        logger.warn('Failed to warm cache for group', { name, error: error.message });
       }
 
       // Small delay between requests to avoid rate limiting
@@ -71,7 +76,7 @@ export async function GET(request) {
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[Cron] Cache warming complete in ${duration}ms`);
+    logger.info('Cache warming complete', { duration, warmed: results.warmed.length, failed: results.failed.length });
 
     return NextResponse.json({
       success: true,
@@ -80,7 +85,7 @@ export async function GET(request) {
     });
 
   } catch (error) {
-    console.error('[Cron] Cache warming failed:', error);
+    logger.error('Cache warming failed', { error: error.message });
     return NextResponse.json({
       success: false,
       error: error.message,

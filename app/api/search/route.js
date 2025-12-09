@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server';
+import { createLogger } from '../../../lib/logger.js';
+import { CELCAT_CONFIG } from '../../../lib/config.js';
+import { ValidationError, ExternalAPIError } from '../../../lib/errors.js';
+
+const logger = createLogger('Search');
 
 // ==========================================
 // CONFIGURATION
 // ==========================================
-const CONFIG = {
+const SEARCH_CONFIG = {
   baseUrl: 'https://celcat.u-bordeaux.fr/Calendar/Home/ReadResourceListItems',
-  // Durée du cache en millisecondes (60 secondes)
-  CACHE_TTL: 60 * 1000,
-  MAX_RESULTS: 15,
+  cacheTTL: 60 * 1000, // 60 seconds
+  maxResults: 15,
   headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     'Accept': 'application/json, text/javascript, */*; q=0.01',
     'X-Requested-With': 'XMLHttpRequest'
   }
@@ -22,11 +26,14 @@ const searchCache = new Map();
  */
 function pruneCache() {
   const now = Date.now();
-  if (searchCache.size > 500) { // Seuil arbitraire de sécurité
+  if (searchCache.size > 500) {
     for (const [key, value] of searchCache.entries()) {
       if (now > value.expiry) searchCache.delete(key);
     }
-    if (searchCache.size > 500) searchCache.clear();
+    if (searchCache.size > 500) {
+      searchCache.clear();
+      logger.warn('Search cache cleared due to size limit');
+    }
   }
 }
 
@@ -47,6 +54,7 @@ export async function GET(request) {
   if (searchCache.has(cacheKey)) {
     const cached = searchCache.get(cacheKey);
     if (now < cached.expiry) {
+      logger.debug('Cache hit', { query: cacheKey });
       return NextResponse.json({ results: cached.data, cached: true });
     } else {
       searchCache.delete(cacheKey);
@@ -54,15 +62,18 @@ export async function GET(request) {
   }
 
   try {
-    const celcatUrl = `${CONFIG.baseUrl}?myResources=false&searchTerm=${encodeURIComponent(query)}&pageSize=${CONFIG.MAX_RESULTS + 5}&pageNumber=1&resType=103&_=${now}`;
+    const celcatUrl = `${SEARCH_CONFIG.baseUrl}?myResources=false&searchTerm=${encodeURIComponent(query)}&pageSize=${SEARCH_CONFIG.maxResults + 5}&pageNumber=1&resType=103&_=${now}`;
+
+    logger.debug('Searching CELCAT', { query });
 
     const res = await fetch(celcatUrl, {
       method: 'GET',
-      headers: CONFIG.headers
+      headers: SEARCH_CONFIG.headers,
+      signal: AbortSignal.timeout(5000)
     });
 
     if (!res.ok) {
-      throw new Error(`Erreur Celcat: ${res.status}`);
+      throw new ExternalAPIError('CELCAT search failed', { status: res.status });
     }
 
     const rawData = await res.json();
@@ -73,18 +84,23 @@ export async function GET(request) {
         text: (item.text || "").replace(/<[^>]*>/g, '').trim() 
       }))
       .filter(item => item.id && item.text.length > 0)
-      .slice(0, CONFIG.MAX_RESULTS);
+      .slice(0, SEARCH_CONFIG.maxResults);
 
-    pruneCache(); // Petit nettoyage si besoin
+    logger.info('Search completed', { query, count: items.length });
+
+    pruneCache();
     searchCache.set(cacheKey, {
       data: items,
-      expiry: now + CONFIG.CACHE_TTL
+      expiry: now + SEARCH_CONFIG.cacheTTL
     });
 
     return NextResponse.json({ results: items, cached: false });
 
   } catch (error) {
-    console.error('[Search API Error]:', error);
-    return NextResponse.json({ results: [] }, { status: 500 });
+    logger.error('Search failed', { query, error: error.message });
+    return NextResponse.json({ 
+      results: [], 
+      error: 'Search failed' 
+    }, { status: 500 });
   }
 }

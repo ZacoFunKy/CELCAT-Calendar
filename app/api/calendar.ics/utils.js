@@ -1,33 +1,9 @@
 // Utilities for Calendar ICS generation
 
-// ==========================================
-// CONFIGURATION
-// ==========================================
-const getEnvArray = (key, def) => {
-    try { return process.env[key] ? JSON.parse(process.env[key]) : def; }
-    catch { return def; }
-};
-
-const getEnvObject = (key, def) => {
-    try { return process.env[key] ? JSON.parse(process.env[key]) : def; }
-    catch { return def; }
-};
-
-export const CONFIG = {
-    celcatUrl: process.env.CELCAT_URL || 'https://celcat.u-bordeaux.fr/Calendar/Home/GetCalendarData',
-    timezone: 'Europe/Paris',
-    blacklist: getEnvArray('CELCAT_BLACKLIST', ['DSPEG', 'Cours DSPEG']),
-    replacements: getEnvObject('CELCAT_REPLACEMENTS', { 'Test': '💻' }),
-
-    MAX_RETRIES: 3,
-    INITIAL_BACKOFF: 500,
-    TIMEOUT: parseInt(process.env.API_TIMEOUT || '6000'),
-    CACHE_TTL: parseInt(process.env.CACHE_TTL || '3600'), // 1 heure
-    GROUP_REGEX: /^[a-zA-Z0-9\s\-\_\.\(\)\,\/:'àâäçèéêëîïôöùûüÀÂÄÇÈÉÊËÎÏÔÖÙÛÜ]+$/
-};
+import { CALENDAR_CONFIG } from '../../../lib/config.js';
 
 // ==========================================
-// LOGIQUE MÉTIER (Helpers)
+// DATE HELPERS
 // ==========================================
 
 export function formatDate(date) {
@@ -62,7 +38,7 @@ export function processEvent(event, { showHolidays }) {
     }
 
     const cleanDescription = cleanDescriptionText(event.description || "");
-    if (CONFIG.blacklist.some(keyword => cleanDescription.includes(keyword))) {
+    if (CALENDAR_CONFIG.blacklist.some(keyword => cleanDescription.includes(keyword))) {
         return null;
     }
 
@@ -218,7 +194,7 @@ export function processEvent(event, { showHolidays }) {
         return null;
     }
 
-    for (const [key, replacement] of Object.entries(CONFIG.replacements)) {
+    for (const [key, replacement] of Object.entries(CALENDAR_CONFIG.replacements)) {
         if (summary.includes(key)) summary = replacement;
     }
 

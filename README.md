@@ -1,81 +1,123 @@
-# 📅 API Convertisseur Celcat vers ICS
+# 📅 CELCAT Calendar - Emploi du Temps Universitaire
 
 [![CI/CD](https://github.com/ZacoFunKy/CELCAT-Calendar/actions/workflows/ci.yml/badge.svg)](https://github.com/ZacoFunKy/CELCAT-Calendar/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Ce projet est une API construite avec **Next.js** qui permet de récupérer, nettoyer et transformer les emplois du temps universitaires (format Celcat) en un flux de calendrier standardisé **ICS**. 
+Application web complète pour transformer les emplois du temps CELCAT en calendriers personnalisés et accessibles. Construit avec **Next.js 16**, **React 19**, et une architecture modulaire pour une maintenance simplifiée.
 
-Il est conçu pour être compatible avec Google Calendar, Apple Calendar et Outlook, en résolvant les problèmes courants d'affichage (doublons, formatage illisible, gestion des vacances).
+> **🎯 Production-ready**: Conçu pour fonctionner de manière autonome avec un minimum de supervision.
 
-## ✨ Fonctionnalités
+## 📖 Documentation
 
-- **Nettoyage intelligent** : Reformate les titres des cours (CM, TD, TP, Examens) pour une lecture rapide.
-- **Filtrage** : Supprime les événements indésirables via une *blacklist* configurable.
-- **Gestion des vacances** : 
-  - Affiche les vacances sous forme de bandeau "Toute la journée" (All Day) pour ne pas encombrer la vue semaine.
-  - Option pour masquer complètement les vacances via un paramètre d'URL.
-- **Détection des salles** : Extrait et nettoie les informations de lieu (Amphi, Salles, Bâtiments).
-- **Performance** : 
-  - Utilise le cache de Next.js (revalidation toutes les heures) pour réduire la charge sur les serveurs de l'université.
-  - Cache applicatif intelligent pour les groupes fréquemment demandés avec éviction LRU.
-  - Tracking des requêtes et statistiques d'utilisation.
-- **Monitoring et Analytics** :
-  - Dashboard administrateur pour visualiser les statistiques d'utilisation.
-  - API de statistiques pour monitorer les performances.
-  - Tracking des groupes populaires et des tendances d'utilisation.
-- **Notifications Push** :
-  - Détection automatique des changements d'emploi du temps.
-  - Notifications via logs et webhooks (Slack, Discord, etc.).
-  - Configuration flexible pour différents canaux de notification.
+| Document | Description |
+|----------|-------------|
+| **[ARCHITECTURE.md](./ARCHITECTURE.md)** | 🏗️ Architecture technique détaillée et diagrammes |
+| **[MAINTENANCE.md](./MAINTENANCE.md)** | 🔧 Guide de maintenance et dépannage |
+| **[MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md)** | 🚀 Guide de migration vers la nouvelle architecture |
+| **[CACHE_WARMING_SETUP.md](./CACHE_WARMING_SETUP.md)** | ⚡ Configuration du préchauffage de cache |
 
-## 🚀 Comment l'utiliser
+## ✨ Fonctionnalités Principales
 
-L'API expose une route principale qui génère le fichier `.ics` à la volée.
+### Pour les Utilisateurs
+- ✅ **Dashboard Intuitif**: Interface moderne pour gérer groupes et préférences
+- 🎨 **Personnalisation Complète**: Couleurs, types d'événements, renommage, masquage
+- 📱 **Multi-plateforme**: Compatible Google Calendar, Apple Calendar, Outlook
+- 🔔 **Notifications** (optionnel): Alertes en cas de changement d'emploi du temps
+- 🔐 **Authentification Sécurisée**: NextAuth.js avec tokens API uniques
 
-### Endpoint
-`GET /api/calendar` (ou le chemin où vous avez placé le fichier route.js)
+### Pour les Administrateurs
+- ⚡ **Performance Optimale**: Cache à 2 niveaux (Memory + Redis) avec stale-while-revalidate
+- 📊 **Monitoring Intégré**: Health checks, métriques cache, statistiques d'usage
+- 🔄 **Haute Disponibilité**: Circuit breaker, retry automatique, fallback sur cache stale
+- 🚀 **Zero-Downtime**: Préchauffage cache via cron, CDN edge caching
+- 📝 **Logs Structurés**: Niveaux configurables (debug/info/warn/error)
+- 🛡️ **Rate Limiting**: Protection contre abus (IP + token based)
 
-### Paramètres
+### Architecture Moderne
+- 🏗️ **Modulaire**: Configuration centralisée, services découplés, erreurs structurées
+- 🧪 **Testable**: Tests unitaires, e2e, performance avec Jest
+- 📚 **Documenté**: JSDoc complet, architecture détaillée, guides de maintenance
+- 🔧 **Maintenable**: "Set and forget" - fonctionne de manière autonome
 
-| Paramètre | Requis | Description | Exemple |
-| :--- | :---: | :--- | :--- |
-| `group` | ✅ | L'identifiant (ou les identifiants) du groupe Celcat. | `g2568` |
-| `holidays`| ❌ | `true` pour afficher les vacances, `false` (défaut) pour les masquer. | `true` |
+## 🚀 Démarrage Rapide
 
-### Exemples d'URL
+### Prérequis
+- Node.js 20+ et npm
+- Compte MongoDB (gratuit sur [MongoDB Atlas](https://www.mongodb.com/cloud/atlas))
+- (Optionnel) Redis pour cache L2 (gratuit sur [Upstash](https://upstash.com))
 
-**1. Récupérer l'emploi du temps d'un groupe :**
-
-https://celcat-calendar.vercel.app/
-
-**2. Récupérer plusieurs groupes fusionnés (ex: CM + TD) :**
-
-https://celcat-calendar.vercel.app/api/calendar.ics?group=5CYG500S%20-%20G2&holidays=false
-
-**3. Inclure les vacances dans le calendrier :**
-
-https://celcat-calendar.vercel.app/api/calendar.ics?group=5CYG500S%20-%20G2&holidays=true
-
-## 🛠️ Installation et Développement
+### Installation
 
 1. **Cloner le projet**
    ```bash
-   git clone [https://github.com/votre-pseudo/votre-projet.git](https://github.com/votre-pseudo/votre-projet.git)
-   cd votre-projet
+   git clone https://github.com/ZacoFunKy/CELCAT-Calendar.git
+   cd CELCAT-Calendar
+   ```
+
+2. **Installer les dépendances**
+   ```bash
    npm install
    ```
-2. **Installer les dépendances**
-    ```bash
-    npm install
-    # ou
-    pnpm install
-    ```
-3. **Lancer le serveur de développement**
-    ```bash
-    npm run dev
-    ```
-4. **Tester**
 
-    Ouvrez votre navigateur sur http://localhost:3000/api/calendar?group=VOTRE_GROUPE
+3. **Configuration**
+   
+   Créer un fichier `.env.local` à la racine :
+   ```env
+   # Base de données (REQUIS)
+   MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/celcat
+   
+   # NextAuth (REQUIS)
+   NEXTAUTH_SECRET=GENERATE_RANDOM_STRING_HERE
+   NEXTAUTH_URL=http://localhost:3000
+   
+   # CELCAT API (Par défaut: Bordeaux)
+   CELCAT_URL=https://celcat.u-bordeaux.fr/Calendar/Home/GetCalendarData
+   
+   # Cache Redis (OPTIONNEL mais recommandé)
+   REDIS_URL=redis://default:password@host:port
+   
+   # Logging (OPTIONNEL)
+   LOG_LEVEL=warn  # debug|info|warn|error
+   ```
+
+4. **Lancer en développement**
+   ```bash
+   npm run dev
+   ```
+   
+   Ouvrir [http://localhost:3000](http://localhost:3000)
+
+5. **Créer un compte et tester**
+   - S'inscrire via `/register`
+   - Configurer groupes dans le dashboard
+   - Récupérer lien ICS et l'ajouter à votre calendrier
+
+### Déploiement Production (Vercel)
+
+1. **Fork le projet** sur GitHub
+
+2. **Connecter à Vercel**
+   - Aller sur [vercel.com](https://vercel.com)
+   - "Import Project" → Sélectionner votre fork
+   
+3. **Configurer les variables d'environnement**
+   ```env
+   MONGODB_URI=mongodb+srv://...
+   NEXTAUTH_SECRET=...
+   NEXTAUTH_URL=https://your-domain.vercel.app
+   REDIS_URL=redis://...  # Optionnel
+   ```
+
+4. **Deploy** 
+   - Vercel déploie automatiquement
+   - URL: `https://your-project.vercel.app`
+
+5. **Configurer le cron** (Préchauffage cache)
+   - Voir [CACHE_WARMING_SETUP.md](./CACHE_WARMING_SETUP.md)
+
+### Variables d'Environnement Complètes
+
+Voir [ARCHITECTURE.md](./ARCHITECTURE.md#variables-denvironnement-requises) pour la liste complète avec descriptions.
 
 ## 🧪 Tests et Qualité
 

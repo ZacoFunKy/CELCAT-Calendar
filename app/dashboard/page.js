@@ -49,6 +49,9 @@ export default function DashboardPage() {
     const [selectedEvent, setSelectedEvent] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
+    // Refs for debouncing
+    const typeMappingTimeoutRef = useRef(null);
+
     const calendarRef = useRef(null);
 
     const formatGroupValue = (group) => {
@@ -242,24 +245,24 @@ export default function DashboardPage() {
     };
 
     const handleTypeMappingChange = (type, value) => {
-        let newMappings;
-        if (!value || value.trim() === '') {
-            // Remove the mapping if empty - create new object without the key
-            const { [type]: removed, ...rest } = typeMappings;
-            newMappings = rest;
-        } else {
-            // Add or update the mapping
-            newMappings = { ...typeMappings, [type]: value.trim() };
-        }
-        
-        // Update state and preferences
-        setTypeMappings(newMappings);
-        updatePreferences({ settings: { ...preferences?.settings, typeMappings: newMappings } });
-        
-        // Force immediate reload to show changes
-        setTimeout(() => {
-            fetchEvents();
-        }, 50);
+        // Update local state immediately for responsive UI
+        setTypeMappings(prev => {
+            const newMappings = !value || value.trim() === '' 
+                ? (() => { const { [type]: removed, ...rest } = prev; return rest; })()
+                : { ...prev, [type]: value.trim() };
+            
+            // Debounce the API call and event reload
+            if (typeMappingTimeoutRef.current) {
+                clearTimeout(typeMappingTimeoutRef.current);
+            }
+            
+            typeMappingTimeoutRef.current = setTimeout(() => {
+                updatePreferences({ settings: { ...preferences?.settings, typeMappings: newMappings } });
+                fetchEvents();
+            }, 500);
+            
+            return newMappings;
+        });
     };
 
     const handleTitleFormatSave = () => {

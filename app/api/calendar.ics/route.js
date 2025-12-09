@@ -1,186 +1,18 @@
 import { NextResponse } from 'next/server';
-import ical from 'ical-generator';
-import {
-  getCachedGroupData,
-  setCachedGroupData,
-  trackGroupRequest,
-  pruneCache,
-  getCacheStats
-} from './cache.js';
-import { checkScheduleChanges, sendPushNotification } from '../notifications/notifier.js';
-import dbConnect from '../../../lib/db';
-import User from '../../../models/User';
-import UserPreference from '../../../models/UserPreference';
-import { CONFIG, getFullAcademicYear, processEvent, applyCustomizations } from './utils.js';
+import { pruneCache, getCacheStats } from './cache.js';
+import { sendPushNotification } from '../notifications/notifier.js';
+import { loadUserPreferences } from './handlers/auth.js';
+import { getEventsForGroup, clearInFlightRequests, normalizeGroupValue } from './handlers/fetcher.js';
+import { generateICS, generateJSON } from './handlers/generator.js';
+import { createLogger } from '../../../lib/logger.js';
 
-const LOG_LEVEL = process.env.LOG_LEVEL || 'warn'; // Disabled logging by default
-const logger = {
-  info: (msg, data) => {
-    if (LOG_LEVEL === 'info' || LOG_LEVEL === 'debug') {
-      console.log(`[INFO] ${msg}`, data ? JSON.stringify(data) : '');
-    }
-  },
-  error: (msg, err) => console.error(`[ERROR] ${msg}`, err)
-};
+const logger = createLogger('CalendarICS');
 
-function normalizeGroupValue(groupValue) {
-  if (!groupValue) return { id: '', label: '' };
-  if (typeof groupValue === 'object' && (groupValue.id || groupValue.label || groupValue.text)) {
-    const id = String(groupValue.id || groupValue.label || groupValue.text || '');
-    const label = String(groupValue.label || groupValue.text || groupValue.id || '');
-    return { id, label };
-  }
-  const raw = String(groupValue);
-  if (raw.includes('::')) {
-    const [idPart, ...rest] = raw.split('::');
-    const label = rest.join('::') || idPart;
-    return { id: idPart, label };
-  }
-  return { id: raw, label: raw };
-}
-
-// --- Helper Functions ---
-
-async function fetchGroupData(groupValue) {
-  const { id, label } = normalizeGroupValue(groupValue);
-  const groupId = id || label;
-  if (!groupId) return [];
-
-  const { start, end } = getFullAcademicYear();
-  const formData = new URLSearchParams();
-  formData.append('start', start);
-  formData.append('end', end);
-  formData.append('resType', '103');
-  formData.append('calView', 'month'); // Changed from agendaDay to month
-  formData.append('federationIds[]', groupId);
-  formData.append('colourScheme', '3');
-
-  logger.info(`Fetching from CELCAT`, { groupId, startDate: start, endDate: end });
-
-  let attempt = 0;
-  while (attempt < CONFIG.MAX_RETRIES) {
-    try {
-      const response = await fetch(CONFIG.celcatUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: formData,
-        signal: AbortSignal.timeout(CONFIG.TIMEOUT)
-      });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      const withoutNulls = (Array.isArray(data) ? data : []).filter(e => e !== null && e !== undefined);
-      logger.info(`CELCAT response for ${groupId}`, { 
-        totalCount: data?.length || 0, 
-        nonNullCount: withoutNulls.length,
-        isArray: Array.isArray(data), 
-        fullResponse: JSON.stringify(data).substring(0, 500)
-      });
-      return data;
-    } catch (error) {
-      attempt++;
-      logger.error(`CELCAT fetch attempt ${attempt}/${CONFIG.MAX_RETRIES} failed for ${groupId}`, error.message);
-      if (attempt === CONFIG.MAX_RETRIES) throw error;
-      await new Promise(r => setTimeout(r, CONFIG.INITIAL_BACKOFF * Math.pow(2, attempt - 1)));
-    }
-  }
-}
-
-// In-flight requests deduplication
-const inFlightRequests = new Map();
-
-export function clearInFlightRequests() {
-  inFlightRequests.clear();
-}
-
-async function getEventsForSingleGroup(groupValue) {
-  const { id, label } = normalizeGroupValue(groupValue);
-  const groupKey = id || label;
-  const displayName = label || id;
-
-  if (!groupKey) {
-    logger.info(`Empty group key for value: ${groupValue}`);
-    return [];
-  }
-
-  trackGroupRequest(displayName);
-  logger.info(`Getting events for group`, { groupKey, displayName });
-
-  // Basic safety check: reject obvious injection attempts only
-  if (groupKey.includes('<') || groupKey.includes('>') || groupKey.includes('\0')) {
-    logger.error(`Rejected suspicious group value: ${groupKey}`);
-    return [];
-  }
-
-  // 1. Check cache with stale support (optimized for Vercel serverless)
-  const cacheResult = await getCachedGroupData(groupKey);
-  if (cacheResult) {
-    const { data, stale } = cacheResult;
-    
-    if (data && data.length > 0) {
-      if (!stale) {
-        // Fresh cache hit
-        logger.info(`Returning fresh cached data for ${displayName}`, { count: data.length });
-        return data;
-      } else {
-        // Stale cache hit - return immediately and revalidate in background
-        logger.info(`Returning stale cached data for ${displayName}, revalidating`, { count: data.length });
-        
-        // Background revalidation (fire-and-forget)
-        fetchGroupData(groupKey)
-          .then(events => {
-            if (events && events.length > 0) {
-              setCachedGroupData(groupKey, events);
-              logger.info(`Background revalidation complete for ${displayName}`);
-            }
-          })
-          .catch(err => logger.error(`Background revalidation failed for ${displayName}`, err));
-        
-        return data;
-      }
-    }
-  }
-
-  // 2. Check in-flight requests (deduplication within same invocation)
-  if (inFlightRequests.has(groupKey)) {
-    logger.info(`Joining in-flight request for group: ${displayName}`);
-    return inFlightRequests.get(groupKey);
-  }
-
-  // 3. Fetch new data
-  const fetchPromise = (async () => {
-    logger.info(`Starting fetch for group ${displayName}`);
-    try {
-      logger.info(`Calling fetchGroupData for ${groupKey}`);
-      const events = await fetchGroupData(groupKey);
-      logger.info(`Fetched events for group ${displayName}`, { count: events?.length || 0, groupKey, sampleEvent: events?.[0] ? JSON.stringify(events[0]).substring(0, 200) : 'none' });
-      setCachedGroupData(groupKey, events);
-
-      // Notify if schedule changed (sync, returns object not promise)
-      try {
-        checkScheduleChanges(displayName, events);
-      } catch (err) {
-        logger.error("Failed to check schedule changes", err);
-      }
-
-      return events;
-    } catch (error) {
-      logger.error(`Failed to fetch group ${displayName}`, error);
-      return [];
-    } finally {
-      inFlightRequests.delete(groupKey);
-    }
-  })();
-
-  inFlightRequests.set(groupKey, fetchPromise);
-  return fetchPromise;
-}
+// Re-export for backward compatibility with tests
+export { clearInFlightRequests };
 
 export async function GET(request) {
   const startTime = Date.now();
-  let requestHiddenRules = [];
-  let requestRenamingRules = new Map();
-  let tokenUserFound = false;
 
   const { searchParams } = new URL(request.url);
   
@@ -193,70 +25,42 @@ export async function GET(request) {
   }
 
   try {
-    // Periodic cache cleanup
-    if (Math.random() < 0.1) { // 10% of requests trigger cleanup
+    // Periodic cache cleanup (10% of requests)
+    if (Math.random() < 0.1) {
       pruneCache();
     }
 
     const token = searchParams.get('token');
     const format = searchParams.get('format'); // 'ics' (default) or 'json'
-
-    let groupValues = [];
-    let normalizedGroups = [];
-    let groupLabels = [];
     let showHolidays = searchParams.get('holidays') === 'true';
-    let hiddenEvents = [];
-    let customNames = new Map();
-    let colorMap = new Map();
-    let prefs = null;
 
-    // 1. Authentication & Preferences via Token
-    if (token) {
-      try {
-        await dbConnect();
-        const user = await User.findOne({ calendarToken: token });
+    // 1. Load user preferences if token provided
+    const userPrefs = token ? await loadUserPreferences(token) : null;
+    
+    let groupValues = userPrefs?.groups || [];
+    let hiddenEvents = userPrefs?.hiddenEvents || [];
+    let customNames = userPrefs?.customNames || new Map();
+    let colorMap = userPrefs?.colorMap || new Map();
+    let hiddenRules = userPrefs?.hiddenRules || [];
+    let renamingRules = userPrefs?.renamingRules || new Map();
 
-        if (user) {
-          tokenUserFound = true;
-          prefs = await UserPreference.findOne({ userId: user._id });
-          if (prefs) {
-            groupValues = prefs.groups || [];
-            if (prefs.colorMap) {
-              colorMap = prefs.colorMap instanceof Map ? prefs.colorMap : new Map(Object.entries(prefs.colorMap));
-            }
-            // Use preferences for holidays if set, otherwise fallback to query param
-            if (prefs.settings && prefs.settings.showHolidays !== undefined) {
-              showHolidays = prefs.settings.showHolidays;
-            }
-            hiddenEvents = prefs.hiddenEvents || [];
-            if (prefs.settings && prefs.settings.customNames) {
-              customNames = prefs.settings.customNames;
-            }
-            // Load advanced rules
-            if (prefs.settings && prefs.settings.hiddenRules) {
-              requestHiddenRules = prefs.settings.hiddenRules;
-            }
-            if (prefs.settings && prefs.settings.renamingRules) {
-              requestRenamingRules = prefs.settings.renamingRules;
-            }
-          }
-        }
-      } catch (e) {
-        logger.error("Erreur auth token", e);
-        // Fallback to standard behavior on error
-      }
+    // Override holidays setting from preferences if available
+    if (userPrefs?.showHolidays !== undefined) {
+      showHolidays = userPrefs.showHolidays;
     }
 
-    // 2. Fallback to 'group' param if no valid token/groups found
-    if (groupValues.length === 0 && tokenUserFound) {
-      // Token is valid but user has no groups configured yet; return empty list instead of 400
+    // 2. Fallback to 'group' param if no groups from token
+    if (groupValues.length === 0 && userPrefs) {
+      // Valid token but no groups configured
       return NextResponse.json({ events: [] });
     }
 
     if (groupValues.length === 0) {
       const groupParam = searchParams.get('group');
       if (!groupParam) {
-        return NextResponse.json({ error: "Paramètre 'group' manquant ou token invalide" }, { status: 400 });
+        return NextResponse.json({ 
+          error: "Paramètre 'group' manquant ou token invalide" 
+        }, { status: 400 });
       }
       groupValues = groupParam.split(',')
         .map(g => g.trim())
@@ -264,7 +68,8 @@ export async function GET(request) {
         .slice(0, 10);
     }
 
-    normalizedGroups = groupValues
+    // 3. Normalize and validate groups
+    const normalizedGroups = groupValues
       .map(normalizeGroupValue)
       .filter(({ id, label }) => {
         const name = label || id;
@@ -277,216 +82,94 @@ export async function GET(request) {
         return true;
       });
 
-    groupLabels = normalizedGroups.map(g => g.label || g.id);
+    const groupLabels = normalizedGroups.map(g => g.label || g.id);
 
     if (normalizedGroups.length === 0) {
       return NextResponse.json({ error: "Groupe invalide" }, { status: 400 });
     }
 
-    // Exécution parallèle (Chaque fetch sera dédoublonné et caché par Vercel/Next.js)
-    const results = await Promise.all(normalizedGroups.map(group => getEventsForSingleGroup(group)));
+    // 4. Fetch events for all groups in parallel
+    const results = await Promise.all(
+      normalizedGroups.map(group => getEventsForGroup(group))
+    );
     const allRawEvents = results.flat().filter(e => e !== null && e !== undefined);
 
-    logger.info("API Response Debug", { 
+    logger.info("Fetched events", { 
       groupLabels, 
-      resultsCount: results.length,
-      rawEventsCount: allRawEvents.length,
+      groupCount: results.length,
+      eventCount: allRawEvents.length,
       format,
-      tokenUserFound
+      authenticated: !!userPrefs
     });
 
-    // Return empty JSON if no events found but JSON format requested
-    if (allRawEvents.length === 0 && format === 'json') {
-      logger.info("Aucun événement trouvé - retournant events vides", { groups: groupLabels });
-      return NextResponse.json({ events: [] });
-    }
-
+    // 5. Handle empty results
     if (allRawEvents.length === 0) {
-      logger.info("Aucun événement trouvé", { groups: groupLabels });
-      return NextResponse.json({ error: "Aucun cours trouvé ou erreur source" }, { status: 404 });
+      if (format === 'json') {
+        return NextResponse.json({ events: [] });
+      }
+      return NextResponse.json({ 
+        error: "Aucun cours trouvé ou erreur source" 
+      }, { status: 404 });
     }
 
-    // Return JSON if requested
+    // 6. Generate response in requested format
+    const options = {
+      showHolidays,
+      hiddenEvents,
+      customNames,
+      colorMap,
+      hiddenRules,
+      renamingRules,
+    };
+
     if (format === 'json') {
-      const events = [];
-      const processedEventIds = new Set();
-
-      allRawEvents.forEach((rawEvent, idx) => {
-        logger.info(`Processing raw event ${idx}`, { 
-          id: rawEvent?.id, 
-          hasId: !!rawEvent?.id,
-          keys: Object.keys(rawEvent || {}),
-          event: JSON.stringify(rawEvent).substring(0, 300)
-        });
-        if (!rawEvent || !rawEvent.id) {
-          logger.info(`Skipped event ${idx}: no id`);
-          return;
-        }
-        if (processedEventIds.has(rawEvent.id)) {
-          logger.info(`Skipped event ${idx}: already processed`);
-          return;
-        }
-
-        // Personalization: Skip hidden events (ID based)
-        if (hiddenEvents.includes(rawEvent.id)) {
-          logger.info(`Skipped event ${idx}: hidden by id`);
-          return;
-        }
-
-        const event = processEvent(rawEvent, { showHolidays });
-        logger.info(`processEvent result for event ${idx}`, { hasEvent: !!event, eventId: event?.id });
-
-        if (!event) return;
-
-        // Personalization: Skip hidden events (Rule based)
-        if (requestHiddenRules && Array.isArray(requestHiddenRules)) {
-          const shouldHide = requestHiddenRules.some(rule => {
-            if (rule.ruleType === 'name' && event.summary === rule.value) return true;
-            if (rule.ruleType === 'professor' && event.summary.includes(rule.value)) return true; // Simple check for now
-            return false;
-          });
-          if (shouldHide) return;
-        }
-
-        // Personalization: Apply custom names
-        // 1. Check specific ID rename
-        let customName = customNames instanceof Map ? customNames.get(rawEvent.id) : customNames[rawEvent.id];
-
-        // 2. If no specific rename, check global renaming rules
-        if (!customName && requestRenamingRules) {
-          const renamingRules = requestRenamingRules instanceof Map ? requestRenamingRules : new Map(Object.entries(requestRenamingRules));
-          if (renamingRules.has(event.summary)) {
-            customName = renamingRules.get(event.summary);
-          }
-        }
-
-        // 3. Apply type mappings
-        if (prefs && prefs.settings && prefs.settings.typeMappings) {
-          const typeMappings = prefs.settings.typeMappings instanceof Map
-            ? prefs.settings.typeMappings
-            : new Map(Object.entries(prefs.settings.typeMappings));
-
-          const prefixMatch = event.summary.match(/^([A-Z]+(?:\s+[A-Z]+)?)\s*-\s*(.+)/);
-          if (prefixMatch) {
-            const prefix = prefixMatch[1];
-            const rest = prefixMatch[2];
-            if (typeMappings.has(prefix)) {
-              const newPrefix = typeMappings.get(prefix);
-              // User requested to keep the hyphen
-              event.summary = newPrefix ? `${newPrefix} - ${rest}` : rest;
-            }
-          }
-        }
-
-        if (customName) {
-          event.summary = customName;
-        }
-
-        if (!event.isHoliday) {
-          // Include in JSON response
-        }
-
-        events.push(event);
-        processedEventIds.add(rawEvent.id);
-      });
-
+      const events = generateJSON(allRawEvents, options);
       return NextResponse.json({ events });
     }
 
-    const calendar = ical({
-      name: `EDT - ${groupLabels.join('+')}`,
-      timezone: CONFIG.timezone,
-      ttl: CONFIG.CACHE_TTL
-    });
-
-    let realCourseCount = 0;
-    const processedEventIds = new Set();
-
-    allRawEvents.forEach(rawEvent => {
-      if (!rawEvent || !rawEvent.id) return;
-      if (processedEventIds.has(rawEvent.id)) return;
-
-      // Personalization: Skip hidden events (ID based)
-      if (hiddenEvents.includes(rawEvent.id)) return;
-
-      const event = processEvent(rawEvent, { showHolidays });
-
-      if (!event) return;
-
-      // Personalization: Apply all customizations (Hidden, Renaming, Type Mappings)
-      const customizedEvent = applyCustomizations(event, {
-        customNames,
-        typeMappings: prefs?.settings?.typeMappings,
-        renamingRules: requestRenamingRules,
-        hiddenRules: requestHiddenRules
-      });
-
-      if (!customizedEvent) return; // Hidden by rule
-
-      if (!event.isHoliday) realCourseCount++;
-
-      const eventType = event.eventType || 'Other';
-      const color = colorMap.get(eventType);
-
-      const icalEvent = calendar.createEvent({
-        id: event.id,
-        start: event.start,
-        end: event.end,
-        summary: event.summary,
-        description: event.description,
-        location: event.location,
-        timezone: CONFIG.timezone,
-        allDay: event.allDay
-      });
-
-      // Add categories for coloring (standard way)
-      if (eventType) {
-        icalEvent.categories([eventType]);
-      }
-
-      // Add custom color property if available (best effort for some clients)
-      if (color) {
-        icalEvent.x('X-COLOR', color);
-        icalEvent.x('X-APPLE-CALENDAR-COLOR', color);
-      }
-
-      processedEventIds.add(rawEvent.id);
-    });
-
-    if (realCourseCount === 0 && !showHolidays) {
+    // Generate ICS calendar
+    const { icsContent, eventCount } = generateICS(allRawEvents, groupLabels, options);
+    
+    // Return 404 if no events remain after filtering
+    if (eventCount === 0 && !showHolidays) {
       return NextResponse.json({ error: "Aucun cours trouvé" }, { status: 404 });
     }
-
+    
     const safeFilename = `edt-${groupLabels.join('_').replace(/[^a-z0-9]/gi, '-').toLowerCase()}.ics`;
     const executionTime = Date.now() - startTime;
 
-    logger.info("Génération OK", { groups: groupLabels, events: realCourseCount, ms: executionTime });
+    logger.info("Generated calendar", { 
+      groups: groupLabels, 
+      events: eventCount, 
+      ms: executionTime 
+    });
 
     // Send download notification for each group
     await Promise.all(groupLabels.map(group =>
       sendPushNotification({
         groupName: group,
-        eventCount: realCourseCount,
+        eventCount: eventCount,
         type: 'download'
       }).catch(err =>
         logger.error("Failed to send download notification", err)
       )
     ));
 
-    return new NextResponse(calendar.toString(), {
+    return new NextResponse(icsContent, {
       status: 200,
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',
         'Content-Disposition': `attachment; filename="${safeFilename}"`,
-        // Vercel Edge Cache optimized headers
-        // s-maxage: CDN cache (1h), stale-while-revalidate: serve stale + revalidate (2h)
         'Cache-Control': `public, max-age=1800, s-maxage=3600, stale-while-revalidate=7200`,
         'X-Response-Time': `${executionTime}ms`,
       },
     });
 
   } catch (error) {
-    logger.error("Erreur fatale", error);
-    return NextResponse.json({ error: 'Service indisponible' }, { status: 500 });
+    logger.error("Service error", { error: error.message, stack: error.stack });
+    return NextResponse.json({ 
+      error: 'Service indisponible',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    }, { status: 500 });
   }
 }

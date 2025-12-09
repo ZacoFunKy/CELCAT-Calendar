@@ -6,18 +6,21 @@
 
 import Redis from 'ioredis';
 import { Redis as UpstashRedis } from '@upstash/redis';
+import { createLogger } from '../../../lib/logger.js';
+import { CACHE_CONFIG } from '../../../lib/config.js';
+
+const logger = createLogger('Cache');
 
 // Initialize Redis with Vercel optimizations
 let redis = null;
 let isHttpRedis = false;
 let redisHealthy = true;
 let lastHealthCheck = 0;
-const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
 
 // Vercel-optimized Redis connection
 const connectionString = process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL;
 
-if (connectionString) {
+if (connectionString && CACHE_CONFIG.redis.enabled) {
   try {
     // Prefer Upstash HTTP for Vercel serverless (no connection pooling issues)
     if (connectionString.startsWith('http')) {
@@ -25,13 +28,13 @@ if (connectionString) {
       redis = new UpstashRedis({
         url: connectionString,
         token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.REDIS_PASSWORD || '',
-        // Vercel Edge optimizations
         automaticDeserialization: true,
         retry: {
           retries: 2,
           backoff: (retryCount) => Math.min(retryCount * 100, 1000)
         }
       });
+      logger.info('Redis initialized (Upstash HTTP)');
     } else {
       // Standard Redis with connection pooling for Vercel
       let url = connectionString;
@@ -42,20 +45,17 @@ if (connectionString) {
       }
 
       redis = new Redis(url, {
-        // Vercel serverless optimizations
-        lazyConnect: true, // Don't connect immediately
-        enableReadyCheck: false, // Skip ready check for faster cold starts
-        maxRetriesPerRequest: 2,
+        lazyConnect: true,
+        enableReadyCheck: false,
+        maxRetriesPerRequest: CACHE_CONFIG.redis.maxRetriesPerRequest,
         retryStrategy: (times) => {
-          if (times > 3) return null; // Give up after 3 retries
+          if (times > 3) return null;
           return Math.min(times * 100, 1000);
         },
-        // Connection pooling
         keepAlive: 30000,
-        connectTimeout: 5000,
-        commandTimeout: 3000,
+        connectTimeout: CACHE_CONFIG.redis.connectTimeout,
+        commandTimeout: CACHE_CONFIG.redis.commandTimeout,
         password: process.env.REDIS_PASSWORD || process.env.UPSTASH_REDIS_REST_TOKEN,
-        // Prevent connection leaks in serverless
         enableOfflineQueue: false,
       });
 
@@ -63,42 +63,47 @@ if (connectionString) {
       redis.on('connect', () => {
         redisHealthy = true;
         lastHealthCheck = Date.now();
+        logger.info('Redis connected');
       });
+      
+      logger.info('Redis initialized (Standard)');
     }
   } catch (e) {
-    console.warn('[Cache] Redis init failed:', e.message);
+    logger.warn('Redis init failed', { error: e.message });
     redis = null;
     isHttpRedis = false;
     redisHealthy = false;
   }
+} else {
+  logger.info('Redis disabled - using memory cache only');
 }
 
 // Circuit breaker with auto-recovery
 let redisDisabled = false;
 let redisFailCount = 0;
-const MAX_FAIL_BEFORE_DISABLE = 3;
 
 function handleRedisError(err) {
   redisFailCount++;
+  logger.warn('Redis error', { failCount: redisFailCount, error: err.message });
   
-  if (redisFailCount >= MAX_FAIL_BEFORE_DISABLE && !redisDisabled) {
-    console.warn('[Cache] Redis circuit breaker opened after', redisFailCount, 'failures');
+  if (redisFailCount >= CACHE_CONFIG.redis.circuitBreaker.failureThreshold && !redisDisabled) {
+    logger.error('Redis circuit breaker opened', { failCount: redisFailCount });
     redisDisabled = true;
     redisHealthy = false;
     
-    // Try to recover after 5 minutes
+    // Auto-recovery
     setTimeout(() => {
-      console.log('[Cache] Attempting Redis recovery...');
+      logger.info('Attempting Redis recovery');
       redisDisabled = false;
       redisFailCount = 0;
-    }, 300000);
+    }, CACHE_CONFIG.redis.circuitBreaker.resetTimeout);
   }
 }
 
 // Health check for Redis
 function checkRedisHealth() {
   const now = Date.now();
-  if (now - lastHealthCheck < HEALTH_CHECK_INTERVAL) {
+  if (now - lastHealthCheck < 30000) {
     return redisHealthy;
   }
   
@@ -117,35 +122,19 @@ const requestStats = new Map();
 let cacheHits = 0;
 let cacheMisses = 0;
 
-// Vercel-optimized cache configuration
-const CACHE_CONFIG = {
-  // Redis L2 Cache
-  REDIS_TTL: 7200, // 2 hours (longer for fewer CELCAT calls)
-  REDIS_STALE_TTL: 86400, // 24 hours stale-while-revalidate
-  
-  // Memory L1 Cache (survives during function execution)
-  MEMORY_TTL: 300000, // 5 minutes (longer for Vercel functions)
-  MEMORY_MAX_SIZE: 50, // Max entries to prevent memory bloat
-  
-  // Stats
-  STATS_WINDOW: 86400000, // 24 hours
-  
-  // Vercel Edge Cache
-  EDGE_CACHE_TTL: 3600, // 1 hour for edge
-  EDGE_STALE_REVALIDATE: 7200, // 2 hours stale-while-revalidate
-};
-
 // Memory cache size management for serverless
 function pruneMemoryCacheIfNeeded() {
-  if (memoryCache.size > CACHE_CONFIG.MEMORY_MAX_SIZE) {
+  if (memoryCache.size > CACHE_CONFIG.memory.pruneThreshold) {
     // Remove oldest 25% of entries
-    const entriesToRemove = Math.floor(CACHE_CONFIG.MEMORY_MAX_SIZE * 0.25);
+    const entriesToRemove = Math.floor(CACHE_CONFIG.memory.maxEntries * 0.25);
     const entries = Array.from(memoryCache.entries())
       .sort((a, b) => a[1].timestamp - b[1].timestamp);
     
     for (let i = 0; i < entriesToRemove; i++) {
       memoryCache.delete(entries[i][0]);
     }
+    
+    logger.debug('Memory cache pruned', { removed: entriesToRemove, remaining: memoryCache.size });
   }
 }
 
@@ -156,53 +145,37 @@ function pruneMemoryCacheIfNeeded() {
 export async function getCachedGroupData(groupName) {
   // 1. Check L1 Memory Cache (fastest)
   const memCached = memoryCache.get(groupName);
-  if (memCached && Date.now() - memCached.timestamp < CACHE_CONFIG.MEMORY_TTL) {
+  if (memCached && Date.now() - memCached.timestamp < CACHE_CONFIG.ttl.memory) {
     cacheHits++;
+    logger.debug('Memory cache hit', { groupName });
     return { data: memCached.data, stale: false };
   }
 
   // 2. Check L2 Redis Cache with stale support
-  if (redis && checkRedisHealth()) {
+  if (redis && checkRedisHealth() && !redisDisabled) {
     try {
-      const [freshData, staleData] = await Promise.all([
-        redis.get(`group:${groupName}`),
-        redis.get(`group:${groupName}:stale`)
-      ]);
+      const cached = isHttpRedis 
+        ? await redis.get(`group:${groupName}`)
+        : await redis.get(`group:${groupName}`).then(r => r ? JSON.parse(r) : null);
 
-      let result = null;
-      let isStale = false;
-
-      if (freshData) {
-        // Fresh data available
-        result = typeof freshData === 'string' ? JSON.parse(freshData) : freshData;
-        isStale = false;
-      } else if (staleData) {
-        // Return stale data, caller should revalidate
-        result = typeof staleData === 'string' ? JSON.parse(staleData) : staleData;
-        isStale = true;
-      }
-
-      if (result) {
+      if (cached) {
+        const age = Date.now() - (cached.timestamp || 0);
+        const isStale = age > CACHE_CONFIG.ttl.fresh * 1000;
+        
         // Populate L1 cache
         memoryCache.set(groupName, {
-          data: result,
+          data: cached.data,
           timestamp: Date.now()
         });
         pruneMemoryCacheIfNeeded();
         
         cacheHits++;
-        return { data: result, stale: isStale };
+        logger.debug('Redis cache hit', { groupName, stale: isStale });
+        return { data: cached.data, stale: isStale };
       }
     } catch (error) {
+      logger.warn('Redis get failed', { groupName, error: error.message });
       handleRedisError(error);
-      // Fallback: try to get stale data even if fresh fetch failed
-      try {
-        const staleData = await redis.get(`group:${groupName}:stale`);
-        if (staleData) {
-          const result = typeof staleData === 'string' ? JSON.parse(staleData) : staleData;
-          return { data: result, stale: true };
-        }
-      } catch (_) { /* ignore */ }
     }
   }
 
@@ -212,42 +185,34 @@ export async function getCachedGroupData(groupName) {
 
 /**
  * Store data in cache with stale-while-revalidate pattern
- * Strategy: Write to L1 Memory -> Write to L2 Redis (fresh + stale)
+ * Strategy: Write to L1 Memory -> Write to L2 Redis
  */
 export async function setCachedGroupData(groupName, data) {
-  if (!data) return;
+  if (!data || !Array.isArray(data)) {
+    logger.warn('Invalid cache data', { groupName });
+    return;
+  }
 
   // 1. Write to L1 Memory Cache immediately
-  memoryCache.set(groupName, {
+  const cacheValue = {
     data,
     timestamp: Date.now()
-  });
+  };
+  
+  memoryCache.set(groupName, cacheValue);
   pruneMemoryCacheIfNeeded();
 
-  // 2. Write to L2 Redis Cache with dual TTL for stale-while-revalidate
-  if (redis && checkRedisHealth()) {
+  // 2. Write to L2 Redis Cache
+  if (redis && checkRedisHealth() && !redisDisabled) {
     try {
-      const stringData = JSON.stringify(data);
-      
-      if (isHttpRedis) {
-        // Upstash: Use pipeline for atomic operations
-        await Promise.allSettled([
-          // Fresh cache (2 hours)
-          redis.set(`group:${groupName}`, data, { ex: CACHE_CONFIG.REDIS_TTL }),
-          // Stale cache (24 hours) - fallback for when fresh expires
-          redis.set(`group:${groupName}:stale`, data, { ex: CACHE_CONFIG.REDIS_STALE_TTL })
-        ]);
-      } else {
-        // Standard Redis: Use pipeline for better performance
-        const pipeline = redis.pipeline();
-        pipeline.set(`group:${groupName}`, stringData, 'EX', CACHE_CONFIG.REDIS_TTL);
-        pipeline.set(`group:${groupName}:stale`, stringData, 'EX', CACHE_CONFIG.REDIS_STALE_TTL);
-        await pipeline.exec().catch(err => handleRedisError(err));
-      }
+      const serialized = isHttpRedis ? cacheValue : JSON.stringify(cacheValue);
+      await redis.setex(`group:${groupName}`, CACHE_CONFIG.ttl.stale, serialized);
+      logger.debug('Cached data saved', { groupName, count: data.length });
       
       // Reset fail count on success
       redisFailCount = 0;
     } catch (err) {
+      logger.warn('Redis set failed', { groupName, error: err.message });
       handleRedisError(err);
     }
   }
@@ -257,6 +222,8 @@ export async function setCachedGroupData(groupName, data) {
  * Track request for a group and update statistics
  */
 export function trackGroupRequest(groupName) {
+  if (!CACHE_CONFIG.tracking.enabled) return;
+  
   const now = Date.now();
   let stats = requestStats.get(groupName);
 
@@ -268,7 +235,7 @@ export function trackGroupRequest(groupName) {
   stats.lastRequest = now;
 
   // Reset stats window
-  if (now - stats.firstRequest > CACHE_CONFIG.STATS_WINDOW) {
+  if (now - stats.firstRequest > CACHE_CONFIG.ttl.stats * 1000) {
     stats.count = 1;
     stats.firstRequest = now;
   }
@@ -280,13 +247,15 @@ export function trackGroupRequest(groupName) {
  * Clear expired L1 cache entries
  */
 export function pruneCache() {
+  pruneMemoryCacheIfNeeded();
+  
+  // Clean old stats
   const now = Date.now();
-  for (const [key, value] of memoryCache.entries()) {
-    if (now - value.timestamp > CACHE_CONFIG.MEMORY_TTL) {
-      memoryCache.delete(key);
+  for (const [key, entry] of requestStats.entries()) {
+    if (now - entry.timestamp > CACHE_CONFIG.ttl.stats * 1000) {
+      requestStats.delete(key);
     }
   }
-  // Note: Redis handles its own TTL eviction
 }
 
 /**
@@ -319,46 +288,52 @@ export function getUsageStatistics() {
 }
 
 /**
- * Clear all caches (for testing purposes)
+ * Clear all caches
  */
-export function clearAllCaches() {
+export async function clearAllCaches() {
   memoryCache.clear();
-  requestStats.clear();
-  redisDisabled = false;
-  redisFailCount = 0;
-  cacheHits = 0;
-  cacheMisses = 0;
+  
+  if (redis && checkRedisHealth() && !redisDisabled) {
+    try {
+      const keys = isHttpRedis
+        ? await redis.keys('group:*')
+        : await redis.keys('group:*');
+      
+      if (keys && keys.length > 0) {
+        await Promise.all(keys.map(k => redis.del(k)));
+      }
+      
+      logger.info('All caches cleared', { keysDeleted: keys?.length || 0 });
+    } catch (err) {
+      logger.error('Cache clear failed', err);
+      throw new Error('Failed to clear cache');
+    }
+  }
 }
 
 /**
  * Get cache performance statistics
  */
 export function getCacheStats() {
-  const hitRate = cacheHits + cacheMisses > 0 
-    ? (cacheHits / (cacheHits + cacheMisses) * 100).toFixed(2)
-    : 0;
+  const totalRequests = cacheHits + cacheMisses;
+  const hitRate = totalRequests > 0 
+    ? ((cacheHits / totalRequests) * 100).toFixed(2) 
+    : '0.00';
 
   return {
-    memory: {
-      size: memoryCache.size,
-      maxSize: CACHE_CONFIG.MEMORY_MAX_SIZE,
-      utilization: ((memoryCache.size / CACHE_CONFIG.MEMORY_MAX_SIZE) * 100).toFixed(2) + '%'
-    },
     redis: {
+      enabled: !!redis && !redisDisabled,
       healthy: redisHealthy,
-      disabled: redisDisabled,
-      failCount: redisFailCount,
-      type: isHttpRedis ? 'Upstash HTTP' : 'Standard TCP'
-    },
-    performance: {
       hits: cacheHits,
       misses: cacheMisses,
-      hitRate: hitRate + '%'
+      hitRate: `${hitRate}%`,
     },
-    config: {
-      memoryTTL: CACHE_CONFIG.MEMORY_TTL / 1000 + 's',
-      redisTTL: CACHE_CONFIG.REDIS_TTL + 's',
-      staleTTL: CACHE_CONFIG.REDIS_STALE_TTL + 's'
+    memory: {
+      entries: memoryCache.size,
+      maxSize: CACHE_CONFIG.memory.maxEntries,
+    },
+    requests: {
+      byGroup: Object.fromEntries(requestStats),
     }
   };
 }
@@ -376,3 +351,32 @@ export function getGroupsNeedingWarmup(minRequests = 5) {
     }))
     .sort((a, b) => b.requests - a.requests);
 }
+
+/**
+ * Check if Redis is connected
+ * @returns {Promise<boolean>}
+ */
+export async function isRedisConnected() {
+  if (!redis || redisDisabled) return false;
+  
+  try {
+    if (isHttpRedis) {
+      await redis.ping();
+    } else {
+      await redis.ping();
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export default {
+  getCachedGroupData,
+  setCachedGroupData,
+  trackGroupRequest,
+  clearAllCaches,
+  pruneCache,
+  getCacheStats,
+  isRedisConnected,
+};
