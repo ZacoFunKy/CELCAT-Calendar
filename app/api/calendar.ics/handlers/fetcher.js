@@ -133,9 +133,11 @@ async function fetchAndCacheGroup(groupKey, displayName) {
 /**
  * Get events for a single group with caching and deduplication
  * @param {string|Object} groupValue - Group identifier
+ * @param {Object} [options]
+ * @param {boolean} [options.forceRefresh=false] - Skip caches and refetch from CELCAT
  * @returns {Promise<Array>} Array of events
  */
-export async function getEventsForGroup(groupValue) {
+export async function getEventsForGroup(groupValue, { forceRefresh = false } = {}) {
   const { id, label } = normalizeGroupValue(groupValue);
   const groupKey = id || label;
   const displayName = label || id;
@@ -153,41 +155,45 @@ export async function getEventsForGroup(groupValue) {
   trackGroupRequest(displayName);
   logger.debug('Getting events for group', { groupKey, displayName });
 
-  // 1. Check cache with stale support
-  const cacheResult = await getCachedGroupData(groupKey);
-  if (cacheResult) {
-    const { data, stale } = cacheResult;
-    
-    if (data && data.length > 0) {
-      if (!stale) {
-        logger.debug('Fresh cache hit', { groupKey, count: data.length });
-        return data;
-      } else {
-        logger.info('Stale cache hit - revalidating in background', { 
-          groupKey, 
-          count: data.length 
-        });
-        
-        // Background revalidation (fire and forget)
-        fetchAndCacheGroup(groupKey, displayName)
-          .catch(err => logger.warn('Background revalidation failed', { 
-            error: err.message 
-          }));
-        
-        return data;
+  // 1. Check cache with stale support (unless forceRefresh)
+  if (!forceRefresh) {
+    const cacheResult = await getCachedGroupData(groupKey);
+    if (cacheResult) {
+      const { data, stale } = cacheResult;
+      
+      if (data && data.length > 0) {
+        if (!stale) {
+          logger.debug('Fresh cache hit', { groupKey, count: data.length });
+          return data;
+        } else {
+          logger.info('Stale cache hit - revalidating in background', { 
+            groupKey, 
+            count: data.length 
+          });
+          
+          // Background revalidation (fire and forget)
+          fetchAndCacheGroup(groupKey, displayName)
+            .catch(err => logger.warn('Background revalidation failed', { 
+              error: err.message 
+            }));
+          
+          return data;
+        }
       }
     }
   }
 
-  // 2. Check in-flight requests (deduplication)
-  if (inFlightRequests.has(groupKey)) {
+  // 2. Check in-flight requests (deduplication) unless forcing refresh
+  if (!forceRefresh && inFlightRequests.has(groupKey)) {
     logger.debug('Joining in-flight request', { groupKey });
     return inFlightRequests.get(groupKey);
   }
 
   // 3. Fetch new data
   const fetchPromise = fetchAndCacheGroup(groupKey, displayName);
-  inFlightRequests.set(groupKey, fetchPromise);
+  if (!forceRefresh) {
+    inFlightRequests.set(groupKey, fetchPromise);
+  }
   return fetchPromise;
 }
 

@@ -92,7 +92,16 @@ export async function GET(request) {
     const results = await Promise.all(
       normalizedGroups.map(group => getEventsForGroup(group))
     );
-    const allRawEvents = results.flat().filter(e => e !== null && e !== undefined);
+    let allRawEvents = results.flat().filter(e => e !== null && e !== undefined);
+
+    // Fallback: if nothing returned, retry once bypassing caches (helps when empty arrays were cached)
+    if (allRawEvents.length === 0) {
+      logger.warn('No events from cache path, forcing refresh', { groupLabels });
+      const refreshed = await Promise.all(
+        normalizedGroups.map(group => getEventsForGroup(group, { forceRefresh: true }))
+      );
+      allRawEvents = refreshed.flat().filter(e => e !== null && e !== undefined);
+    }
 
     logger.info("Fetched events", { 
       groupLabels, 
