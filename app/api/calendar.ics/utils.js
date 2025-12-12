@@ -233,9 +233,16 @@ export function processEvent(event, { showHolidays }) {
     if (specificRoomLine) {
         const cleanRoom = specificRoomLine.trim();
         if (finalLocation) {
-            finalLocation = (cleanRoom.includes(finalLocation) || cleanRoom.includes("CREMI"))
-                ? cleanRoom
-                : `${finalLocation} - ${cleanRoom}`;
+            // If room line repeats building code, strip it to avoid "Bâtiment A29 - A29/ Salle 105"
+            let roomPart = cleanRoom;
+            const buildingCodeMatch = cleanRoom.match(/^([A-Z]?\d{2,3})\s*\/\s*(.+)$/i);
+            if (buildingCodeMatch && finalLocation.toLowerCase().includes(buildingCodeMatch[1].toLowerCase())) {
+                roomPart = buildingCodeMatch[2];
+            }
+
+            finalLocation = (roomPart.includes(finalLocation) || roomPart.includes("CREMI"))
+                ? roomPart
+                : `${finalLocation} - ${roomPart}`;
         } else {
             finalLocation = cleanRoom;
         }
