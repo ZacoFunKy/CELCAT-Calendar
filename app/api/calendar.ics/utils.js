@@ -178,6 +178,9 @@ export function processEvent(event, { showHolidays }) {
         if (startDate < academicStart || startDate > academicEnd) return null;
         if (!showHolidays) return null;
 
+        // Standardize holiday title to avoid "Cours-Vacance" style names
+        summary = CALENDAR_CONFIG.holidayCategory || 'Vacances';
+
         return {
             id: event.id,
             start: toLocalISOString(startDate),
