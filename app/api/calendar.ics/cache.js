@@ -148,6 +148,10 @@ export async function getCachedGroupData(groupName) {
   if (memCached && Date.now() - memCached.timestamp < CACHE_CONFIG.ttl.memory) {
     cacheHits++;
     logger.debug('Memory cache hit', { groupName });
+    if (Array.isArray(memCached.data) && memCached.data.length === 0) {
+      cacheMisses++;
+      return null;
+    }
     return { data: memCached.data, stale: false };
   }
 
@@ -161,6 +165,10 @@ export async function getCachedGroupData(groupName) {
       if (cached) {
         const age = Date.now() - (cached.timestamp || 0);
         const isStale = age > CACHE_CONFIG.ttl.fresh * 1000;
+        if (Array.isArray(cached.data) && cached.data.length === 0) {
+          cacheMisses++;
+          return null;
+        }
         
         // Populate L1 cache
         memoryCache.set(groupName, {
@@ -190,6 +198,12 @@ export async function getCachedGroupData(groupName) {
 export async function setCachedGroupData(groupName, data) {
   if (!data || !Array.isArray(data)) {
     logger.warn('Invalid cache data', { groupName });
+    return;
+  }
+
+  // Do not cache empty results to avoid “link expires” when upstream had a transient failure
+  if (data.length === 0) {
+    logger.warn('Skipping cache write for empty data', { groupName });
     return;
   }
 
