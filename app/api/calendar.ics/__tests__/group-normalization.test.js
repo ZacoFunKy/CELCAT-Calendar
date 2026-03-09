@@ -4,6 +4,7 @@
 
 import { GET, clearInFlightRequests } from '../route';
 import { clearAllCaches } from '../cache';
+import { normalizeGroupValue, isValidGroupName } from '../handlers/fetcher';
 
 // Mock dependencies
 jest.mock('../../../../lib/db', () => ({
@@ -25,7 +26,90 @@ jest.mock('../../../../models/UserPreference', () => ({
   },
 }));
 
-describe('Group Normalization', () => {
+// ──────────────────────────────────────────────────────────────
+// Unit tests for normalizeGroupValue
+// ──────────────────────────────────────────────────────────────
+describe('normalizeGroupValue', () => {
+  it('handles a plain string', () => {
+    expect(normalizeGroupValue('INFO-1')).toEqual({ id: 'INFO-1', label: 'INFO-1' });
+  });
+
+  it('handles the id::label format', () => {
+    expect(normalizeGroupValue('42::Licence Informatique')).toEqual({
+      id: '42',
+      label: 'Licence Informatique',
+    });
+  });
+
+  it('handles an object with id and label', () => {
+    expect(normalizeGroupValue({ id: '99', label: 'Master Info' })).toEqual({
+      id: '99',
+      label: 'Master Info',
+    });
+  });
+
+  it('handles an object with text instead of label', () => {
+    expect(normalizeGroupValue({ id: '7', text: 'Groupe A' })).toEqual({
+      id: '7',
+      label: 'Groupe A',
+    });
+  });
+
+  it('returns empty strings for null/undefined input', () => {
+    expect(normalizeGroupValue(null)).toEqual({ id: '', label: '' });
+    expect(normalizeGroupValue(undefined)).toEqual({ id: '', label: '' });
+  });
+
+  it('preserves extra colons in label when using id::label format', () => {
+    const result = normalizeGroupValue('5::Label:With:Colons');
+    expect(result.id).toBe('5');
+    expect(result.label).toBe('Label:With:Colons');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────
+// Unit tests for isValidGroupName
+// ──────────────────────────────────────────────────────────────
+describe('isValidGroupName', () => {
+  it('accepts a normal group name', () => {
+    expect(isValidGroupName('INFO-L3')).toBe(true);
+    expect(isValidGroupName('Groupe A')).toBe(true);
+  });
+
+  it('rejects empty string', () => {
+    expect(isValidGroupName('')).toBe(false);
+  });
+
+  it('rejects null / undefined', () => {
+    expect(isValidGroupName(null)).toBe(false);
+    expect(isValidGroupName(undefined)).toBe(false);
+  });
+
+  it('rejects a group name with < or >', () => {
+    expect(isValidGroupName('<script>alert(1)</script>')).toBe(false);
+    expect(isValidGroupName('group<bad')).toBe(false);
+    expect(isValidGroupName('group>bad')).toBe(false);
+  });
+
+  it('rejects a group name with a null byte', () => {
+    expect(isValidGroupName('group\0name')).toBe(false);
+  });
+
+  it('rejects a group name with javascript: protocol', () => {
+    expect(isValidGroupName('javascript:alert(1)')).toBe(false);
+    expect(isValidGroupName('JAVASCRIPT:ALERT(1)')).toBe(false);
+  });
+
+  it('rejects a group name longer than 200 characters', () => {
+    expect(isValidGroupName('a'.repeat(201))).toBe(false);
+    expect(isValidGroupName('a'.repeat(200))).toBe(true);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────
+// Integration tests via the GET route
+// ──────────────────────────────────────────────────────────────
+describe('Group Normalization (Route Integration)', () => {
   beforeEach(() => {
     clearAllCaches();
     clearInFlightRequests();
@@ -144,3 +228,4 @@ describe('Group Normalization', () => {
     expect(data.events).toEqual([]);
   });
 });
+

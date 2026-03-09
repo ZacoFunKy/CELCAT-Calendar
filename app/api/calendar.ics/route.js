@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { pruneCache, getCacheStats } from './cache.js';
 import { sendPushNotification } from '../notifications/notifier.js';
 import { loadUserPreferences } from './handlers/auth.js';
-import { getEventsForGroup, clearInFlightRequests, normalizeGroupValue } from './handlers/fetcher.js';
+import { getEventsForGroup, clearInFlightRequests, normalizeGroupValue, isValidGroupName } from './handlers/fetcher.js';
 import { generateICS, generateJSON } from './handlers/generator.js';
 import { createLogger } from '../../../lib/logger.js';
 
@@ -74,8 +74,7 @@ export async function GET(request) {
       .filter(({ id, label }) => {
         const name = label || id;
         if (!name) return false;
-        // Basic safety: reject obvious injection attempts
-        if (name.includes('<') || name.includes('>') || name.includes('\0')) {
+        if (!isValidGroupName(name)) {
           logger.error(`Rejected suspicious group: ${name}`);
           return false;
         }

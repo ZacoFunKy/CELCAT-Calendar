@@ -50,15 +50,20 @@ export function normalizeGroupValue(groupValue) {
  */
 export function isValidGroupName(groupName) {
   if (!groupName) return false;
-  
+
+  // Reject excessively long values
+  if (groupName.length > 200) return false;
+
   // Reject obvious XSS/injection attempts
-  if (groupName.includes('<script') || 
-      groupName.includes('javascript:') || 
-      groupName.includes('\0')) {
+  if (groupName.includes('<') ||
+      groupName.includes('>') ||
+      groupName.includes('\0') ||
+      groupName.toLowerCase().includes('javascript:') ||
+      groupName.toLowerCase().includes('<script')) {
     logger.error('Rejected suspicious group', { groupName });
     return false;
   }
-  
+
   return true;
 }
 
