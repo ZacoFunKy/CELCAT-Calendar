@@ -3,10 +3,10 @@ import { NextResponse } from 'next/server';
 export const revalidate = 60;
 
 export async function GET() {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000);
 
+  try {
     const res = await fetch('https://celcat.u-bordeaux.fr/Calendar/Home/Index', {
       method: 'HEAD',
       signal: controller.signal,
@@ -16,10 +16,10 @@ export async function GET() {
     });
 
     clearTimeout(timeoutId);
-
     return NextResponse.json({ online: res.ok });
 
   } catch (error) {
+    clearTimeout(timeoutId);
     return NextResponse.json({ online: false });
   }
 }
